@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Panel, MetricRow, StatusDot, CheckLine } from './components/bits'
-import { Heatmap, BtcDxyChart, IntradayChart, HistoryChart, MacroChart } from './components/charts'
+import { Heatmap, BtcDxyChart, IntradayChart, HistoryChart, MacroChart, FlowChart } from './components/charts'
 import News from './components/News'
 import Reflection from './components/Reflection'
 import Journal from './components/Journal'
@@ -104,6 +104,9 @@ export default function App() {
 
           {/* 中：熱圖與核心標的 */}
           <div className={`${tab === 'market' ? 'flex' : 'hidden'} xl:flex flex-col gap-3 min-w-0`}>
+            <Panel title="跨資產資金流向（金屬／原油／美股／台股／加密／美元／美債）">
+              <FlowChart metrics={M} />
+            </Panel>
             <Panel title="資金熱圖（1 日漲跌）" right={<div className="flex gap-3">
               <MiniIdx m={M.spx} onPick={setPick} /><MiniIdx m={M.sox} onPick={setPick} alert={A('sox')} /></div>}>
               <div className="space-y-3">
