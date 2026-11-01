@@ -134,7 +134,8 @@ def install_mocks():
     S.coingecko_prices = lambda ids=(): {"bitcoin": {"usd": yahoo_chart("BTC-USD")["price"] * 1.001},
                                          "pax-gold": {"usd": yahoo_chart("GC=F")["price"] * 0.99}}
     S.twse_taiex = lambda: yahoo_chart("^TWII")["points"][-20:]
-    S.ism_latest = lambda: {"2026-09-01": 54.5, "2026-10-01": 53.9}
+    S.ism_latest = lambda: {"2026-09-01": 54.5}
+    S.ism_from_news = lambda: {"2026-10-01": {53.9: ["PR Newswire", "Textile World"]}, "2026-08-01": {54.6: ["A"]}}
     S.bls_latest = lambda: {"CPIAUCNS": fred("CPIAUCNS")[-24:], "CPILFENS": fred("CPILFENS")[-24:],
                             "PAYEMS": fred("PAYEMS")[-24:], "UNRATE": fred("UNRATE")[-24:]}
     S.bls_release_calendar = lambda: {"2026-11-13": ["CPI"], "2026-11-06": ["NFP"]}

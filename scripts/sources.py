@@ -322,6 +322,34 @@ def ism_latest():
     return out
 
 
+def ism_from_news():
+    """ISM 新聞稿會被多家媒體轉載，標題固定為
+    「Manufacturing PMI® at 54.5%; September 2026 ISM® Manufacturing PMI® Report」。
+    從 Google News RSS 收集，回傳 {'YYYY-MM-01': {value: [媒體...]}}，供上層做「≥2 家一致才採用」。"""
+    import re
+    import feedparser
+    url = ("https://news.google.com/rss/search?q=%22Manufacturing+PMI%22+%22ISM%22+%22Manufacturing+PMI%C2%AE+Report%22"
+           "&hl=en-US&gl=US&ceid=US:en")
+    feed = feedparser.parse(_get(url, retries=2).content)
+    rx = re.compile(r"Manufacturing PMI\W{0,3}\s*(?:at|registered)\s*([\d.]+)\s*%\W+"
+                    r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+(20\d\d)", re.I)
+    found: dict = {}
+    for e in feed.entries:
+        t = e.get("title", "")
+        m = rx.search(t)
+        if not m:
+            continue
+        v = _num(m.group(1))
+        if not v or not 25 <= v <= 80:
+            continue
+        d = f"{m.group(3)}-{MONTHS.index(m.group(2).lower()) + 1:02d}-01"
+        src = t.rsplit(" - ", 1)[-1] if " - " in t else "unknown"
+        found.setdefault(d, {}).setdefault(v, set()).add(src)
+    if not found:
+        raise RuntimeError("新聞中找不到 ISM 標題")
+    return {d: {v: sorted(srcs) for v, srcs in vals.items()} for d, vals in found.items()}
+
+
 # ---------------------------------------------------------------- 經濟日曆（BLS 官方 ICS）
 def bls_release_calendar():
     """回傳 {'YYYY-MM-DD': ['CPI', 'NFP', ...]}。失敗回傳空 dict。"""

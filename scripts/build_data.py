@@ -140,6 +140,17 @@ def main():
     if ism_cache_f.exists():
         ism_hist.update(json.loads(ism_cache_f.read_text()))
     ISM_NEW = safe("ISM 官網", S.ism_latest) or {}
+    ISM_NEWS = safe("ISM 新聞轉載", S.ism_from_news) or {}
+    ism_news_note = []
+    for d, vals in ISM_NEWS.items():
+        # 同一月份：取轉載最多的數值；至少 2 家不同媒體一致才採用，且不可有互相矛盾的數值
+        best_v, srcs = max(vals.items(), key=lambda kv: len(kv[1]))
+        others = [v for v in vals if v != best_v]
+        if len(srcs) >= 2 and not others and d not in ISM_NEW:
+            ISM_NEW[d] = best_v
+            ism_news_note.append(f"{d[:7]}={best_v}（{len(srcs)} 家媒體一致）")
+        elif others:
+            ism_news_note.append(f"{d[:7]} 媒體數值不一致 {sorted(vals)}，不採用")
     ism_conflict = {d: (ism_hist[d], v) for d, v in ISM_NEW.items() if d in ism_hist and abs(ism_hist[d] - v) > 0.05}
     for d, v in ISM_NEW.items():
         if d not in ism_seed:  # 已驗證的種子值不被覆寫
@@ -316,7 +327,7 @@ def main():
         for d, v in s or []:
             p = f"{int(d[:4]) - 1}{d[4:]}"
             if p in m:
-                res.append([d, round((v / m[p] - 1) * 100, 2)])
+                res.append([d, round((v / m[p] - 1) * 100, 3)])
         return res
 
     def diff(s):
@@ -344,10 +355,11 @@ def main():
                              "note": "官網數值與已驗證紀錄不一致（可能為修正值），請人工確認"}
                             for d, (a, b) in ism_conflict.items()]
                            or [V.compare(None, None, None, None, 0,
-                                         note=("ISM 官網本次抓取成功：" + "、".join(f"{d[:7]}={v}" for d, v in sorted(ISM_NEW.items()))
-                                               if ISM_NEW else "ISM 官網本次未抓到，使用已驗證歷史值")
+                                         note=("本次取得新值：" + "、".join(f"{d[:7]}={v}" for d, v in sorted(ISM_NEW.items()))
+                                               if ISM_NEW else "本次無新公布值，使用已驗證歷史值")
+                                         + ("；新聞比對：" + "；".join(ism_news_note) if ism_news_note else "")
                                          + "；ISM 不授權 FRED，2025/12 以前無免費來源")]),
-                "source": "ISM Report On Business（官網）"},
+                "source": "ISM Report On Business（官網 / 媒體轉載 ≥2 家一致）"},
     }
     for k, m in macro.items():
         m["status"] = V.worst(m["checks"]) if m["series"] else "missing"
