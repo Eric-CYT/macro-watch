@@ -2,7 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Panel } from './bits'
 import { fmt } from '../lib/util'
 import {
-  MARKETS, STATES, TRENDS, LEVELS, BIASES, DECISIONS, CYCLES, emptyTrade, marketName,
+  MARKETS, STATES, TRENDS, LEVELS, BIASES, DECISIONS, CYCLES, FUND_STATES, FUND_DEST, TA_SIGNALS, TA_VERDICT,
+  emptyTrade, normalize, marketName, flowZ, flowRanking,
   loadTrades, addTrade, deleteTrade, loadTradeDraft, saveTradeDraft, clearTradeDraft, reference, checks, followUp,
 } from '../lib/trades'
 
@@ -12,7 +13,7 @@ const sel = `${inp} pr-6`
 export default function TradeCheck({ metrics }) {
   const [t, setT] = useState(() => {
     const d = loadTradeDraft()
-    return d ? { ...emptyTrade(), ...d } : emptyTrade()
+    return d ? normalize(d) : emptyTrade()
   })
   const [list, setList] = useState(loadTrades)
   const [msg, setMsg] = useState('')
@@ -30,12 +31,16 @@ export default function TradeCheck({ metrics }) {
   const ref = useMemo(() => reference(m), [m])
   const cks = useMemo(() => checks(t, ref), [t, ref])
   const errors = cks.filter((c) => c.level === 'error').length
+  const ranking = useMemo(() => flowRanking(metrics, 5), [metrics])
+  const myFlow = m ? [1, 5, 20].map((n) => ({ n, z: flowZ(m, n) })) : null
+  const memo = (q) => <Memo value={t[q].memo} onChange={(v) => set(q, { memo: v })} />
+  const toggleArr = (q, key, v) => set(q, { [key]: t[q][key].includes(v) ? t[q][key].filter((x) => x !== v) : [...t[q][key], v] })
 
   const submit = () => {
     if (errors && !confirm(`還有 ${errors} 個邏輯錯誤，仍要記錄嗎？`)) return
     setList(addTrade({ ...t, ref: ref ? { last: ref.last, date: ref.date, trend: ref.trend } : null }))
     clearTradeDraft(); dirty.current = false
-    setT({ ...emptyTrade(), market: t.market, custom: t.custom })
+    setT({ ...emptyTrade(), market: t.market, custom: t.custom, product: t.product })
     setMsg('已記錄 ✓（下方歷史紀錄可追蹤後續走勢）')
     setTimeout(() => setMsg(''), 4000)
   }
@@ -46,7 +51,7 @@ export default function TradeCheck({ metrics }) {
   return (
     <div className="grid gap-3 xl:grid-cols-[1fr_380px]">
       <div className="space-y-3 min-w-0">
-        <Panel title="交易前檢查：每次進場前回答 8 個問題">
+        <Panel title="交易前檢查：每次進場前回答 12 個問題">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <span className="text-[13px] text-ink2">交易市場</span>
             <select value={t.market} onChange={(e) => set('market', e.target.value)} className={sel} aria-label="交易市場">
@@ -55,12 +60,16 @@ export default function TradeCheck({ metrics }) {
             {t.market === 'other' && (
               <input value={t.custom} onChange={(e) => set('custom', e.target.value)} placeholder="例如：2330 台積電、NVDA、ETH" className={`${inp} w-56`} />
             )}
-            {ref && <span className="text-[12px] text-muted num">現價 {fmt(ref.last, ref.decimals)}（{ref.date}）</span>}
+            <span className="text-[13px] text-ink2 ml-1">交易商品</span>
+            <input value={t.product} onChange={(e) => set('product', e.target.value)}
+              placeholder="例如：台指期 TX、0050、2330、MNQ、BTCUSDT 永續" className={`${inp} w-64`} aria-label="交易商品名稱" />
+            {ref && <span className="text-[12px] text-muted num">參考指數現價 {fmt(ref.last, ref.decimals)}（{ref.date}）</span>}
           </div>
 
           <Q n={1} title="當前市場正在幹甚麼？">
             <Chips options={STATES} value={t.q1.state} onChange={(v) => set('q1', { state: v })} />
             <input value={t.q1.note} onChange={(e) => set('q1', { note: e.target.value })} placeholder="補充：量價、消息、資金流向…" className={`${inp} w-full mt-2`} />
+            {memo('q1')}
           </Q>
 
           <Q n={2} title="趨勢的起點在哪裡？">
@@ -79,20 +88,24 @@ export default function TradeCheck({ metrics }) {
                   <button className="text-s1 ml-1" onClick={() => set('q2', { date: ref.e60.hi[0], price: String(+ref.e60.hi[1].toFixed(ref.decimals)) })}>帶入</button></span>
               </div>
             )}
+            {memo('q2')}
           </Q>
 
           <Q n={3} title="當前趨勢是甚麼？">
             <Chips options={TRENDS} value={t.q3.trend} onChange={(v) => set('q3', { trend: v })} />
             {ref && <Ref>參考｜日線：{ref.trend}（現價 {fmt(ref.last, ref.decimals)}、MA20 {fmt(ref.ma20, ref.decimals)}、MA60 {fmt(ref.ma60, ref.decimals)}）</Ref>}
+            {memo('q3')}
           </Q>
 
           <Q n={4} title="當前趨勢的級別是甚麼？">
             <Chips options={LEVELS} value={t.q4.level} onChange={(v) => set('q4', { level: v })} />
+            {memo('q4')}
           </Q>
 
           <Q n={5} title="你的偏見是甚麼？">
             <Chips options={BIASES} value={t.q5.bias} onChange={(v) => set('q5', { bias: v })} colors={{ 偏多: 'var(--up)', 偏空: 'var(--down)' }} />
             <input value={t.q5.note} onChange={(e) => set('q5', { note: e.target.value })} placeholder="偏見的理由，以及它可能錯在哪" className={`${inp} w-full mt-2`} />
+            {memo('q5')}
           </Q>
 
           <Q n={6} title="你是順哪個大、逆哪個小？">
@@ -119,11 +132,12 @@ export default function TradeCheck({ metrics }) {
             {t.q6.bigLevel && t.q6.smallLevel && t.q6.bigDir && t.q6.smallDir && (
               <Ref>你的句子：順「{t.q6.bigLevel}{t.q6.bigDir}」、逆「{t.q6.smallLevel}{t.q6.smallDir}」</Ref>
             )}
+            {memo('q6')}
           </Q>
 
           <Q n={7} title="你的防守位在哪？">
             <div className="flex flex-wrap gap-2">
-              {[['entry', '預計進場價'], ['stop', '防守位（停損）'], ['target', '目標位（選填）']].map(([k, l]) => (
+              {[['entry', '預計進場價'], ['stop', '防守位（停損）']].map(([k, l]) => (
                 <label key={k} className="text-[12px] text-muted flex items-center gap-1">{l}
                   <input type="number" inputMode="decimal" value={t.q7[k]} onChange={(e) => set('q7', { [k]: e.target.value })} className={`${inp} w-32 num`} /></label>
               ))}
@@ -131,6 +145,7 @@ export default function TradeCheck({ metrics }) {
             </div>
             <input value={t.q7.note} onChange={(e) => set('q7', { note: e.target.value })} placeholder="防守位的依據：前低、均線、結構破壞點…" className={`${inp} w-full mt-2`} />
             {ref && <Ref>參考｜近 20 日低點 {fmt(ref.e20.lo[1], ref.decimals)}、高點 {fmt(ref.e20.hi[1], ref.decimals)}</Ref>}
+            {memo('q7')}
           </Q>
 
           <Q n={8} title="要不要到交易週期裡面去？">
@@ -142,6 +157,63 @@ export default function TradeCheck({ metrics }) {
             </div>
             <input value={t.q8.note} onChange={(e) => set('q8', { note: e.target.value })}
               placeholder={t.q8.decision === '等待（設條件觀察）' ? '等待什麼條件出現才進場？' : '決策理由'} className={`${inp} w-full mt-2`} />
+            {memo('q8')}
+          </Q>
+
+          <Q n={9} title="資金在幹嘛？">
+            <Chips options={FUND_STATES} value={t.q9.state} onChange={(v) => set('q9', { state: v })} />
+            {myFlow && (
+              <Ref>參考｜此市場資金流向（與儀表板同算法）：{myFlow.map(({ n, z }) => (
+                <span key={n} className="mr-2">{n}D <span className={z > 0 ? 'up' : z < 0 ? 'down' : ''}>{z == null ? '—' : `${z > 0 ? '+' : ''}${z.toFixed(1)}σ`}</span></span>))}
+                <span className="text-muted">（|σ| ≥ 1 為明顯，≥ 2 為異常）</span></Ref>
+            )}
+            {memo('q9')}
+          </Q>
+
+          <Q n={10} title="資金會去哪？（可複選）">
+            <div className="flex flex-wrap gap-1">
+              {FUND_DEST.map((d) => {
+                const on = t.q10.dest.includes(d)
+                return <button key={d} type="button" onClick={() => toggleArr('q10', 'dest', d)}
+                  className={`text-[12px] px-2.5 py-1 rounded-lg border ${on ? 'bg-s2 border-s2 text-white' : 'border-line text-ink2 hover:bg-surface2'}`}>{d}</button>
+              })}
+            </div>
+            {ranking.length > 0 && (
+              <Ref>參考｜近 5 日資金最強流入：{ranking.slice(0, 3).map((x) => `${x.name} ${x.z > 0 ? '+' : ''}${x.z.toFixed(1)}σ`).join('、')}
+                ；最強流出：{ranking.slice(-3).reverse().map((x) => `${x.name} ${x.z > 0 ? '+' : ''}${x.z.toFixed(1)}σ`).join('、')}</Ref>
+            )}
+            {memo('q10')}
+          </Q>
+
+          <Q n={11} title="目前技術分析的情況？是否適合進場？">
+            <div className="text-[12px] text-muted mb-1">看到的訊號（可複選）</div>
+            <div className="flex flex-wrap gap-1">
+              {TA_SIGNALS.map((d) => {
+                const on = t.q11.signals.includes(d)
+                return <button key={d} type="button" onClick={() => toggleArr('q11', 'signals', d)}
+                  className={`text-[12px] px-2.5 py-1 rounded-lg border ${on ? 'bg-s1 border-s1 text-white' : 'border-line text-ink2 hover:bg-surface2'}`}>{d}</button>
+              })}
+            </div>
+            {ref && (
+              <Ref>參考｜日線 RSI(14) {ref.rsi.toFixed(1)}、距 MA20 {ref.distMa20 > 0 ? '+' : ''}{ref.distMa20.toFixed(2)}%
+                ；系統偵測：{ref.signals.length ? ref.signals.join('、') : '無明顯訊號'}
+                {ref.signals.length > 0 && <button className="text-s1 ml-1" onClick={() => set('q11', { signals: [...new Set([...t.q11.signals, ...ref.signals])] })}>帶入</button>}</Ref>
+            )}
+            <div className="text-[12px] text-muted mt-2 mb-1">結論</div>
+            <Chips options={TA_VERDICT} value={t.q11.verdict} onChange={(v) => set('q11', { verdict: v })}
+              colors={{ 適合進場: 'var(--color-good)', 不適合進場: 'var(--color-critical)', 等待確認訊號: 'var(--color-warning)' }} />
+            {memo('q11')}
+          </Q>
+
+          <Q n={12} title="獲利價？">
+            <div className="flex flex-wrap gap-2">
+              {[['t1', '第一獲利價'], ['t2', '第二獲利價（選填）']].map(([k, l]) => (
+                <label key={k} className="text-[12px] text-muted flex items-center gap-1">{l}
+                  <input type="number" inputMode="decimal" value={t.q12[k]} onChange={(e) => set('q12', { [k]: e.target.value })} className={`${inp} w-32 num`} aria-label={l} /></label>
+              ))}
+            </div>
+            {ref && <Ref>參考｜近 60 日高點 {fmt(ref.e60.hi[1], ref.decimals)}、低點 {fmt(ref.e60.lo[1], ref.decimals)}（前高／前低常是第一獲利區）</Ref>}
+            {memo('q12')}
           </Q>
 
           <div className="flex items-center gap-2 mt-3 flex-wrap">
@@ -211,15 +283,26 @@ function Chips({ options, value, onChange, colors = {} }) {
   )
 }
 
+function Memo({ value, onChange }) {
+  return (
+    <textarea value={value || ''} onChange={(e) => onChange(e.target.value)} rows={1}
+      placeholder="備註" onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = `${e.target.scrollHeight}px` }}
+      className={`${inp} w-full mt-2 resize-y min-h-[34px] text-[12px]`} aria-label="備註" />
+  )
+}
+
 const Ref = ({ children }) => <div className="text-[11px] text-muted mt-1 num">{children}</div>
 
 function Summary({ t }) {
   const rows = [
-    ['市場', marketName(t)], ['1 在幹嘛', t.q1.state], ['2 起點', [t.q2.date, t.q2.price].filter(Boolean).join(' @ ')],
+    ['市場', marketName(t)], ['商品', t.product], ['1 在幹嘛', t.q1.state], ['2 起點', [t.q2.date, t.q2.price].filter(Boolean).join(' @ ')],
     ['3 趨勢', t.q3.trend], ['4 級別', t.q4.level], ['5 偏見', t.q5.bias],
     ['6 順大逆小', t.q6.bigLevel && t.q6.smallLevel ? `順${t.q6.bigLevel}${t.q6.bigDir} 逆${t.q6.smallLevel}${t.q6.smallDir}` : ''],
-    ['7 防守', [t.q7.entry && `進 ${t.q7.entry}`, t.q7.stop && `守 ${t.q7.stop}`, t.q7.target && `目標 ${t.q7.target}`].filter(Boolean).join('・')],
+    ['7 防守', [t.q7.entry && `進 ${t.q7.entry}`, t.q7.stop && `守 ${t.q7.stop}`].filter(Boolean).join('・')],
     ['8 決策', [t.q8.decision, t.q8.cycle].filter(Boolean).join('・')],
+    ['9 資金', t.q9.state], ['10 資金去向', t.q10.dest.join('、')],
+    ['11 技術面', [t.q11.verdict, t.q11.signals.join('、')].filter(Boolean).join('｜')],
+    ['12 獲利價', [t.q12.t1, t.q12.t2].filter(Boolean).join(' / ')],
   ]
   return (
     <Panel title="一句話總覽">
@@ -238,7 +321,7 @@ function TradeRow({ t, m, onDelete }) {
     <div className="rounded-lg bg-surface2 p-2">
       <button className="w-full text-left flex flex-wrap items-center gap-x-3 gap-y-1" onClick={() => setOpen((o) => !o)}>
         <span className="num text-[12px] text-muted">{created}</span>
-        <span className="text-[13px] text-ink font-medium">{marketName(t)}</span>
+        <span className="text-[13px] text-ink font-medium">{marketName(t)}{t.product && <span className="text-ink2 font-normal">｜{t.product}</span>}</span>
         <span className={`text-[12px] ${t.q5.bias === '偏多' ? 'up' : t.q5.bias === '偏空' ? 'down' : 'text-ink2'}`}>{t.q5.bias || '—'}</span>
         <span className="text-[12px] text-ink2">{t.q8.decision || '未決定'}{t.q8.cycle ? `・${t.q8.cycle}` : ''}</span>
         {f && (
@@ -253,13 +336,22 @@ function TradeRow({ t, m, onDelete }) {
       </button>
       {open && (
         <div className="mt-2 text-[12px] text-ink2 space-y-1 border-t border-line pt-2">
-          <p>1. 在幹嘛：{t.q1.state || '—'}{t.q1.note && `｜${t.q1.note}`}</p>
-          <p>2. 起點：{[t.q2.date, t.q2.price].filter(Boolean).join(' @ ') || '—'}{t.q2.note && `｜${t.q2.note}`}</p>
-          <p>3. 趨勢：{t.q3.trend || '—'}　4. 級別：{t.q4.level || '—'}{t.ref && <span className="text-muted">（當時系統日線判斷：{t.ref.trend}）</span>}</p>
-          <p>5. 偏見：{t.q5.bias || '—'}{t.q5.note && `｜${t.q5.note}`}</p>
-          <p>6. 順「{t.q6.bigLevel}{t.q6.bigDir}」逆「{t.q6.smallLevel}{t.q6.smallDir}」</p>
-          <p>7. 進場 {t.q7.entry || '—'}・防守 {t.q7.stop || '—'}・目標 {t.q7.target || '—'}{t.q7.note && `｜${t.q7.note}`}</p>
-          <p>8. {t.q8.decision || '—'}・{t.q8.cycle || '—'}{t.q8.note && `｜${t.q8.note}`}</p>
+          {[
+            ['1. 在幹嘛', [t.q1.state, t.q1.note].filter(Boolean).join('｜'), t.q1.memo],
+            ['2. 起點', [[t.q2.date, t.q2.price].filter(Boolean).join(' @ '), t.q2.note].filter(Boolean).join('｜'), t.q2.memo],
+            ['3. 趨勢', t.q3.trend + (t.ref ? `（當時系統日線判斷：${t.ref.trend}）` : ''), t.q3.memo],
+            ['4. 級別', t.q4.level, t.q4.memo],
+            ['5. 偏見', [t.q5.bias, t.q5.note].filter(Boolean).join('｜'), t.q5.memo],
+            ['6. 順大逆小', t.q6.bigLevel ? `順「${t.q6.bigLevel}${t.q6.bigDir}」逆「${t.q6.smallLevel}${t.q6.smallDir}」` : '', t.q6.memo],
+            ['7. 防守', [`進場 ${t.q7.entry || '—'}・防守 ${t.q7.stop || '—'}`, t.q7.note].filter(Boolean).join('｜'), t.q7.memo],
+            ['8. 決策', [t.q8.decision, t.q8.cycle, t.q8.note].filter(Boolean).join('・'), t.q8.memo],
+            ['9. 資金在幹嘛', t.q9.state, t.q9.memo],
+            ['10. 資金會去哪', t.q10.dest.join('、'), t.q10.memo],
+            ['11. 技術面', [t.q11.verdict, t.q11.signals.join('、')].filter(Boolean).join('｜'), t.q11.memo],
+            ['12. 獲利價', [t.q12.t1, t.q12.t2].filter(Boolean).join(' / '), t.q12.memo],
+          ].map(([k, v, mm]) => (
+            <p key={k}>{k}：{v || '—'}{mm && <span className="block pl-4 text-muted whitespace-pre-wrap">備註：{mm}</span>}</p>
+          ))}
           {f && <p className="text-muted num">追蹤：基準 {fmt(f.e, 2)} → 最新 {fmt(f.last, 2)}（{f.lastDate}，{f.days} 個收盤）。防守／目標以日收盤價判斷。</p>}
           <button onClick={onDelete} className="text-critical text-[11px]">刪除</button>
         </div>

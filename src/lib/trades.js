@@ -16,19 +16,38 @@ export const BIASES = ['偏多', '偏空', '中性']
 export const DECISIONS = ['進場', '等待（設條件觀察）', '放棄']
 export const CYCLES = ['當沖', '短線（數日）', '波段（數週）', '中長線（數月）']
 
+export const FUND_STATES = ['流入', '流出', '類別內輪動', '觀望／量縮', '槓桿推升（投機）', '去槓桿（被動賣壓）']
+export const FUND_DEST = ['美股', '費半', '台股', '加密', '黃金', '原油', '銅', '美元', '美債', '現金／貨幣市場', '日圓', '新興市場']
+export const TA_SIGNALS = ['多頭排列', '空頭排列', '突破前高', '跌破前低', '回測支撐有守', '反彈遇壓', '量增', '量縮',
+  'RSI 超買', 'RSI 超賣', '頂背離', '底背離', '型態整理中']
+export const TA_VERDICT = ['適合進場', '等待確認訊號', '不適合進場']
+
 export const emptyTrade = () => ({
-  market: 'spx', custom: '',
-  q1: { state: '', note: '' },
-  q2: { date: '', price: '', note: '' },
-  q3: { trend: '' },
-  q4: { level: '' },
-  q5: { bias: '', note: '' },
-  q6: { bigLevel: '', bigDir: '', smallLevel: '', smallDir: '' },
-  q7: { entry: '', stop: '', target: '', note: '' },
-  q8: { decision: '', cycle: '', note: '' },
+  market: 'spx', custom: '', product: '',
+  q1: { state: '', note: '', memo: '' },
+  q2: { date: '', price: '', note: '', memo: '' },
+  q3: { trend: '', memo: '' },
+  q4: { level: '', memo: '' },
+  q5: { bias: '', note: '', memo: '' },
+  q6: { bigLevel: '', bigDir: '', smallLevel: '', smallDir: '', memo: '' },
+  q7: { entry: '', stop: '', note: '', memo: '' },
+  q8: { decision: '', cycle: '', note: '', memo: '' },
+  q9: { state: '', memo: '' },
+  q10: { dest: [], memo: '' },
+  q11: { signals: [], verdict: '', memo: '' },
+  q12: { t1: '', t2: '', memo: '' },
 })
 
-export function loadTrades() { try { return JSON.parse(localStorage.getItem(TKEY) || '[]') } catch { return [] } }
+/** 舊紀錄補齊新欄位（目標位從第 7 題搬到第 12 題） */
+export function normalize(t) {
+  const e = emptyTrade()
+  const out = { ...e, ...t }
+  for (const k of Object.keys(e)) if (k.startsWith('q')) out[k] = { ...e[k], ...(t?.[k] || {}) }
+  if (!out.q12.t1 && t?.q7?.target) out.q12 = { ...out.q12, t1: t.q7.target }
+  return out
+}
+
+export function loadTrades() { try { return JSON.parse(localStorage.getItem(TKEY) || '[]').map(normalize) } catch { return [] } }
 export function saveTrades(list) { localStorage.setItem(TKEY, JSON.stringify(list)) }
 export function addTrade(t) {
   const now = new Date().toISOString()
@@ -73,7 +92,44 @@ export function reference(m) {
     const hi = seg.reduce((a, b) => (b[1] > a[1] ? b : a)), lo = seg.reduce((a, b) => (b[1] < a[1] ? b : a))
     return { hi, lo }
   }
-  return { last, date: h.at(-1)[0], ma20, ma60, trend, e20: ext(20), e60: ext(60), rate: !!m.rate, decimals: m.decimals ?? 2 }
+  // RSI(14)，標準 Wilder 平滑（與多數看盤軟體相同；日收盤價）
+  let ag = 0, al = 0
+  for (let i = 1; i <= 14; i++) { const d = v[i] - v[i - 1]; if (d > 0) ag += d; else al -= d }
+  ag /= 14; al /= 14
+  for (let i = 15; i < v.length; i++) {
+    const d = v[i] - v[i - 1]
+    ag = (ag * 13 + Math.max(d, 0)) / 14
+    al = (al * 13 + Math.max(-d, 0)) / 14
+  }
+  const rsi = al === 0 ? 100 : 100 - 100 / (1 + ag / al)
+  const prev20 = h.slice(-21, -1)
+  const hi20prev = Math.max(...prev20.map((x) => x[1])), lo20prev = Math.min(...prev20.map((x) => x[1]))
+  const signals = []
+  if (last > ma20 && ma20 > ma60) signals.push('多頭排列')
+  if (last < ma20 && ma20 < ma60) signals.push('空頭排列')
+  if (last > hi20prev) signals.push('突破前高')
+  if (last < lo20prev) signals.push('跌破前低')
+  if (rsi >= 70) signals.push('RSI 超買')
+  if (rsi <= 30) signals.push('RSI 超賣')
+  return { last, date: h.at(-1)[0], ma20, ma60, trend, e20: ext(20), e60: ext(60), rate: !!m.rate, decimals: m.decimals ?? 2,
+    rsi, signals, distMa20: (last / ma20 - 1) * 100 }
+}
+
+/** 資金流向 σ（與儀表板資金流向圖同算法）；rate 類以價格方向（−Δ殖利率） */
+export function flowZ(m, n) {
+  const h = m?.history
+  if (!h || h.length < 70 || h.length <= n) return null
+  const v = h.map((x) => x[1]); const bond = !!m.rate
+  const d = []
+  for (let i = v.length - 61; i < v.length - 1; i++) d.push(bond ? -(v[i] - v[i - 1]) * 100 : Math.log(v[i] / v[i - 1]) * 100)
+  const mu = d.reduce((s, x) => s + x, 0) / d.length
+  const sd = Math.sqrt(d.reduce((s, x) => s + (x - mu) ** 2, 0) / d.length)
+  const raw = bond ? -(v.at(-1) - v[v.length - 1 - n]) * 100 : (v.at(-1) / v[v.length - 1 - n] - 1) * 100
+  return sd ? raw / (sd * Math.sqrt(n)) : 0
+}
+export const FLOW_KEYS = [['spx', '美股'], ['sox', '費半'], ['taiex', '台股'], ['btc', '加密'], ['gold', '黃金'], ['wti', '原油'], ['copper', '銅'], ['dxy', '美元'], ['us10y', '美債']]
+export function flowRanking(metrics, n = 5) {
+  return FLOW_KEYS.map(([k, name]) => ({ k, name, z: flowZ(metrics?.[k], n) })).filter((x) => x.z != null).sort((a, b) => b.z - a.z)
 }
 
 const num = (x) => (x === '' || x == null ? null : Number(x))
@@ -81,12 +137,13 @@ const num = (x) => (x === '' || x == null ? null : Number(x))
 /** 邏輯一致性檢查：回傳 [{level:'error'|'warn'|'ok', msg}] */
 export function checks(t, ref) {
   const out = []
-  const e = num(t.q7.entry), s = num(t.q7.stop), g = num(t.q7.target)
+  const e = num(t.q7.entry), s = num(t.q7.stop), g = num(t.q12.t1)
   const bias = t.q5.bias, dec = t.q8.decision
   const li = (x) => LEVELS.indexOf(x)
   const filled = [t.q1.state, t.q2.date || t.q2.price || t.q2.note, t.q3.trend, t.q4.level, t.q5.bias,
-    t.q6.bigLevel && t.q6.smallLevel, t.q7.stop, t.q8.decision].filter(Boolean).length
-  out.push({ level: filled === 8 ? 'ok' : 'warn', msg: `已回答 ${filled}/8 題` })
+    t.q6.bigLevel && t.q6.smallLevel, t.q7.stop, t.q8.decision, t.q9.state, t.q10.dest.length, t.q11.verdict, t.q12.t1].filter(Boolean).length
+  out.push({ level: filled === 12 ? 'ok' : 'warn', msg: `已回答 ${filled}/12 題` })
+  if (!t.product?.trim()) out.push({ level: 'warn', msg: '尚未填寫交易商品名稱' })
 
   if (t.q6.bigLevel && t.q6.smallLevel && li(t.q6.bigLevel) >= li(t.q6.smallLevel))
     out.push({ level: 'error', msg: `「順大逆小」的大級別（${t.q6.bigLevel}）必須比小級別（${t.q6.smallLevel}）更長` })
@@ -100,13 +157,22 @@ export function checks(t, ref) {
     const risk = Math.abs(e - s) / e * 100
     if (Number.isFinite(risk)) out.push({ level: risk > 8 ? 'warn' : 'ok', msg: `單筆風險（進場→防守）：${risk.toFixed(2)}%${risk > 8 ? '，距離偏大，確認部位大小' : ''}` })
     if (g != null) {
+      if (bias === '偏多' && g <= e) out.push({ level: 'error', msg: '偏多但獲利價不高於進場價' })
+      if (bias === '偏空' && g >= e) out.push({ level: 'error', msg: '偏空但獲利價不低於進場價' })
       const rr = Math.abs(g - e) / Math.abs(e - s)
-      if (Number.isFinite(rr)) out.push({ level: rr < 1.5 ? 'warn' : 'ok', msg: `報酬風險比 R:R = ${rr.toFixed(2)}${rr < 1.5 ? '（低於 1.5，值得再想想）' : ''}` })
+      if (Number.isFinite(rr)) out.push({ level: rr < 1.5 ? 'warn' : 'ok', msg: `報酬風險比 R:R（第一獲利價）= ${rr.toFixed(2)}${rr < 1.5 ? '（低於 1.5，值得再想想）' : ''}` })
+      const g2 = num(t.q12.t2)
+      if (g2 != null) { const rr2 = Math.abs(g2 - e) / Math.abs(e - s); if (Number.isFinite(rr2)) out.push({ level: 'ok', msg: `第二獲利價 R:R = ${rr2.toFixed(2)}` }) }
     }
   }
   if (dec === '進場' && !t.q7.stop) out.push({ level: 'error', msg: '決定進場卻沒有防守位' })
   if (dec === '進場' && bias === '中性') out.push({ level: 'warn', msg: '偏見是中性卻決定進場：方向依據是什麼？' })
   if (dec === '進場' && !t.q8.cycle) out.push({ level: 'warn', msg: '請選擇交易週期，週期決定防守位與持有時間' })
+  if (bias === '偏多' && ['流出', '去槓桿（被動賣壓）'].includes(t.q9.state)) out.push({ level: 'warn', msg: `偏多但你判斷資金正在「${t.q9.state}」：逆著資金做多需要更強的理由` })
+  if (bias === '偏空' && ['流入', '槓桿推升（投機）'].includes(t.q9.state)) out.push({ level: 'warn', msg: `偏空但你判斷資金正在「${t.q9.state}」：逆著資金做空需要更強的理由` })
+  if (dec === '進場' && t.q11.verdict === '不適合進場') out.push({ level: 'error', msg: '技術面判斷「不適合進場」，第 8 題卻決定進場' })
+  if (dec === '進場' && t.q11.verdict === '等待確認訊號') out.push({ level: 'warn', msg: '技術面還在等確認訊號，現在進場是否太早？' })
+  if (dec === '進場' && !t.q12.t1) out.push({ level: 'warn', msg: '決定進場但沒有獲利價：何時出場？' })
   if (ref && t.q3.trend && t.q4.level === '日線' && ref.trend !== t.q3.trend)
     out.push({ level: 'warn', msg: `系統依日線均線判斷為「${ref.trend}」，與你的判斷（${t.q3.trend}）不同，確認一下依據` })
   return out
@@ -129,7 +195,7 @@ export function followUp(t, m) {
     else if (t.q5.bias === '偏空') stopHit = after.find(([, v]) => v >= s)
     else stopHit = undefined
   }
-  const g = num(t.q7.target)
+  const g = num(t.q12?.t1 ?? t.q7?.target)
   let targetHit = null
   if (g != null && after.length) {
     if (t.q5.bias === '偏多') targetHit = after.find(([, v]) => v >= g)
