@@ -20,7 +20,11 @@ UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
-TIMEOUT = 25
+TIMEOUT = 15
+import threading
+_yf_lock = threading.Lock()
+_yf_state = {"fails": 0, "tripped": False}
+YAHOO_TRIP_AFTER = 5  # 連續失敗 N 次 → 本次執行不再打 Yahoo（避免整體超時）
 
 _session = requests.Session()
 _session.headers.update({"User-Agent": UA, "Accept": "*/*"})
@@ -34,7 +38,7 @@ except Exception:  # noqa: BLE001
     _yahoo = _session
 
 
-def _get(url, *, session=None, params=None, retries=3, **kw):
+def _get(url, *, session=None, params=None, retries=2, **kw):
     s = session or _session
     last = None
     for i in range(retries):
@@ -47,7 +51,8 @@ def _get(url, *, session=None, params=None, retries=3, **kw):
                 break
         except Exception as e:  # noqa: BLE001
             last = e
-        time.sleep(1.5 * (i + 1))
+        if i < retries - 1:
+            time.sleep(1.5 * (i + 1))
     raise last or RuntimeError(f"failed {url}")
 
 
@@ -107,22 +112,32 @@ def treasury_yields(years_back: int = 2):
 
 # ---------------------------------------------------------------- Yahoo Finance
 def yahoo_chart(symbol: str, rng: str = "2y", interval: str = "1d"):
-    """回傳 dict(meta, daily 或 intraday)。日期以交易所當地時區計算。"""
+    """回傳 dict(meta, points)。日期以交易所當地時區計算。含熔斷：Yahoo 被擋時快速失敗。"""
+    if _yf_state["tripped"]:
+        raise RuntimeError("Yahoo 已熔斷（本次執行連續失敗過多，改用備援來源）")
     last = None
+    res = None
     for host in ("query1", "query2"):
         try:
             r = _get(
                 f"https://{host}.finance.yahoo.com/v8/finance/chart/{symbol}",
                 session=_yahoo,
                 params={"range": rng, "interval": interval, "includePrePost": "false"},
-                retries=2,
+                retries=1,
             )
             res = r.json()["chart"]["result"][0]
             break
         except Exception as e:  # noqa: BLE001
             last = e
-    else:
-        return _yfinance_fallback(symbol, rng, interval, last)
+    with _yf_lock:
+        if res is None:
+            _yf_state["fails"] += 1
+            if _yf_state["fails"] >= YAHOO_TRIP_AFTER:
+                _yf_state["tripped"] = True
+        else:
+            _yf_state["fails"] = 0
+    if res is None:
+        raise RuntimeError(f"Yahoo {symbol}: {last}")
 
     meta = res.get("meta", {})
     ts = res.get("timestamp") or []
@@ -151,26 +166,6 @@ def yahoo_chart(symbol: str, rng: str = "2y", interval: str = "1d"):
     }
 
 
-def _yfinance_fallback(symbol, rng, interval, err):
-    try:
-        import yfinance as yf
-    except Exception:  # noqa: BLE001
-        raise RuntimeError(f"Yahoo {symbol} failed: {err}")
-    h = yf.Ticker(symbol).history(period=rng, interval=interval, auto_adjust=False)
-    if h is None or h.empty:
-        raise RuntimeError(f"Yahoo/yfinance {symbol} failed: {err}")
-    pts = []
-    for idx, row in h.iterrows():
-        v = _num(row["Close"])
-        if v is None:
-            continue
-        if interval.endswith("d"):
-            pts.append([idx.strftime("%Y-%m-%d"), v])
-        else:
-            pts.append([int(idx.timestamp()), v])
-    return {"points": pts, "price": pts[-1][1], "time": None, "prev_close": None, "currency": None}
-
-
 # ---------------------------------------------------------------- 加密貨幣
 def binance_klines(symbol="BTCUSDT", interval="1d", limit=730):
     """Binance 公開行情鏡像 data-api.binance.vision（不受地區限制、免 key）。日 K 以 UTC 日切。"""
@@ -190,6 +185,16 @@ def binance_klines(symbol="BTCUSDT", interval="1d", limit=730):
 def binance_price(symbol="BTCUSDT"):
     r = _get("https://data-api.binance.vision/api/v3/ticker/price", params={"symbol": symbol})
     return _num(r.json()["price"])
+
+
+def coingecko_history(coin_id: str, days: int = 365):
+    """CoinGecko 日線（UTC）。用於黃金備援：PAXG 為 1 枚 = 1 金衡盎司實體黃金的代幣。"""
+    r = _get(f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart",
+             params={"vs_currency": "usd", "days": str(days), "interval": "daily"})
+    out = {}
+    for t, v in r.json()["prices"]:
+        out[datetime.fromtimestamp(t / 1000, tz=timezone.utc).strftime("%Y-%m-%d")] = _num(v)
+    return [[d, v] for d, v in sorted(out.items()) if v]
 
 
 def coingecko_prices(ids=("bitcoin", "pax-gold")):

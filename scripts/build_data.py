@@ -9,7 +9,9 @@ import json
 import os
 import shutil
 import sys
+import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -26,12 +28,30 @@ CONFIG = json.loads((ROOT / "shared" / "config.json").read_text(encoding="utf-8"
 ERRORS: list[str] = []
 
 
+T0 = time.time()
+
+
+def log(msg):
+    print(f"[{time.time() - T0:6.1f}s] {msg}", flush=True)
+
+
 def safe(label, fn, *a, **kw):
+    t = time.time()
     try:
-        return fn(*a, **kw)
+        r = fn(*a, **kw)
+        log(f"✓ {label} ({time.time() - t:.1f}s)")
+        return r
     except Exception as e:  # noqa: BLE001
         ERRORS.append(f"{label}: {type(e).__name__}: {str(e)[:160]}")
+        log(f"✗ {label} ({time.time() - t:.1f}s) {type(e).__name__}: {str(e)[:120]}")
         return None
+
+
+def pmap(items, fn, workers=8):
+    """平行抓取；items 為 (key, args...)；回傳 {key: result}"""
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {k: ex.submit(fn, *args) for k, *args in items}
+        return {k: f.result() for k, f in futs.items()}
 
 
 def ago(days):
@@ -88,25 +108,25 @@ def main():
     now = datetime.now(timezone.utc)
 
     # ------------------------------------------------------------ 抓取
-    Y = {}
-    for k, sym in {
+    YSYM = {
         "tnx": "^TNX", "wti": "CL=F", "gold": "GC=F", "copper": "HG=F", "dxy": "DX-Y.NYB",
         "usdjpy": "JPY=X", "usdtwd": "TWD=X", "taiex": "^TWII", "btc": "BTC-USD", "vix": "^VIX",
         "spx": "^GSPC", "sox": "^SOX",
         "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDCAD": "CAD=X", "USDSEK": "SEK=X", "USDCHF": "CHF=X",
-    }.items():
-        Y[k] = yahoo_hist(sym)
+    }
+    log("開始抓取 Yahoo")
+    Y = pmap([(k, sym) for k, sym in YSYM.items()], yahoo_hist, workers=6)
     Y["USDJPY"] = Y["usdjpy"]
 
-    F = {}
-    for sid, start in {
+    FSTART = {
         "DGS10": ago(800), "DGS2": ago(800), "T10Y2Y": ago(800), "BAMLH0A0HYM2": ago(800),
         "DCOILWTICO": ago(120), "PCOPPUSDM": ago(400), "DEXJPUS": ago(60), "DEXTAUS": ago(60),
         "DEXUSEU": ago(60), "DEXUSUK": ago(60), "DEXCAUS": ago(60), "DEXSDUS": ago(60), "DEXSZUS": ago(60),
         "VIXCLS": ago(60), "SP500": ago(60),
         "CPIAUCSL": "2010-01-01", "CPILFESL": "2010-01-01", "PAYEMS": "2010-01-01", "UNRATE": "2010-01-01",
-    }.items():
-        F[sid] = safe(f"FRED {sid}", S.fred, sid, start)
+    }
+    log("開始抓取 FRED")
+    F = pmap([(sid, f"FRED {sid}", S.fred, sid, st) for sid, st in FSTART.items()], safe, workers=8)
 
     TR = safe("Treasury", S.treasury_yields) or {}
     BIN = safe("Binance BTCUSDT", S.binance_klines, "BTCUSDT", "1d", 730)
@@ -150,6 +170,33 @@ def main():
         return (Y.get(k) or {}).get("price")
 
     M = {}
+    # Yahoo 失敗時的備援序列（官方/獨立來源），並標示為備援
+    FB = {}
+    if not ypts("dxy"):
+        try:
+            fm0 = {k: V.to_map(F[s_]) for k, s_ in {"EURUSD": "DEXUSEU", "USDJPY": "DEXJPUS", "GBPUSD": "DEXUSUK",
+                                                    "USDCAD": "DEXCAUS", "USDSEK": "DEXSDUS", "USDCHF": "DEXSZUS"}.items()}
+            dd = sorted(set.intersection(*(set(m) for m in fm0.values())))
+            FB["dxy"] = ([[d, round(V.dxy_from_fx({k: fm0[k][d] for k in fm0}), 3)] for d in dd],
+                         "ICE 公式 × 聯準會匯率（備援）")
+        except Exception:  # noqa: BLE001
+            pass
+    for k, sid, nm in (("usdjpy", "DEXJPUS", "FRED DEXJPUS（備援）"), ("usdtwd", "DEXTAUS", "FRED DEXTAUS（備援）"),
+                       ("spx", "SP500", "FRED SP500（備援）"), ("vix", "VIXCLS", "FRED VIXCLS（備援）"),
+                       ("wti", "DCOILWTICO", "FRED WTI 現貨（備援）")):
+        if not ypts(k) and F.get(sid):
+            FB[k] = (F[sid], nm)
+    if not ypts("gold"):
+        g = safe("CoinGecko PAXG 歷史", S.coingecko_history, "pax-gold", 365)
+        if g:
+            FB["gold"] = (g, "CoinGecko PAXG（實體黃金代幣，備援）")
+
+    def pick(k, default_src):
+        if ypts(k):
+            return ypts(k), default_src, False
+        if k in FB:
+            return FB[k][0], FB[k][1], True
+        return None, default_src, False
 
     # ------------------------------------------------------------ 殖利率
     tnx = ypts("tnx")
@@ -177,12 +224,14 @@ def main():
                      [V.compare(None, None, None, None, 0, note="僅 FRED 免費提供；FRED 自 2026/4 起只保留近 3 年")], 2, rate=True)
 
     # ------------------------------------------------------------ 原物料
-    M["wti"] = metric("wti", "WTI 原油", "cmdty", "USD/bbl", ypts("wti"), "Yahoo CL=F（近月期貨）",
+    h, src, fb = pick("wti", "Yahoo CL=F（近月期貨）")
+    M["wti"] = metric("wti", "WTI 原油", "cmdty", "USD/bbl", h, src,
                       [V.compare_series("CL=F", ypts("wti"), "FRED WTI 現貨", F.get("DCOILWTICO"), 2.5,
-                                        note="期貨近月 vs 庫欣現貨，換月時差距會放大")])
-    M["gold"] = metric("gold", "黃金", "cmdty", "USD/oz", ypts("gold"), "Yahoo GC=F（近月期貨）",
+                                        note="期貨近月 vs 庫欣現貨，換月時差距會放大")], fallback=fb)
+    h, src, fb = pick("gold", "Yahoo GC=F（近月期貨）")
+    M["gold"] = metric("gold", "黃金", "cmdty", "USD/oz", h, src,
                        [V.compare("GC=F 即時", yprice("gold"), "PAXG（CoinGecko）", (CG.get("pax-gold") or {}).get("usd"), 2.5,
-                                  note="PAXG 為 1:1 實體黃金代幣，近似現貨；期貨有正價差")], 1)
+                                  note="PAXG 為 1:1 實體黃金代幣，近似現貨；期貨有正價差")], 1, fallback=fb)
     cu = ypts("copper")
     cu_chk = V.compare(None, None, None, None, 0, note="比對來源無資料")
     fcu = F.get("PCOPPUSDM")
@@ -211,13 +260,16 @@ def main():
                                            note="聯準會為紐約中午報價，ICE 為收盤，容許 0.6%"))
     except Exception as e:  # noqa: BLE001
         dxy_checks.append(V.compare(None, None, None, None, 0, note=f"FRED 匯率不足：{e}"))
-    M["dxy"] = metric("dxy", "美元指數 DXY", "fx", "", ypts("dxy"), "Yahoo DX-Y.NYB（ICE）", dxy_checks, 2)
-    M["usdjpy"] = metric("usdjpy", "USD/JPY", "fx", "", ypts("usdjpy"), "Yahoo JPY=X",
+    h, src, fb = pick("dxy", "Yahoo DX-Y.NYB（ICE）")
+    M["dxy"] = metric("dxy", "美元指數 DXY", "fx", "", h, src, dxy_checks, 2, fallback=fb)
+    h, src, fb = pick("usdjpy", "Yahoo JPY=X")
+    M["usdjpy"] = metric("usdjpy", "USD/JPY", "fx", "", h, src, fallback=fb, checks=
                          [V.compare_series("JPY=X", ypts("usdjpy"), "FRED DEXJPUS", F.get("DEXJPUS"), 0.8,
-                                           note="聯準會紐約中午報價")], 2)
-    M["usdtwd"] = metric("usdtwd", "USD/TWD", "fx", "", ypts("usdtwd"), "Yahoo TWD=X",
+                                           note="聯準會紐約中午報價")], decimals=2)
+    h, src, fb = pick("usdtwd", "Yahoo TWD=X")
+    M["usdtwd"] = metric("usdtwd", "USD/TWD", "fx", "", h, src, fallback=fb, checks=
                          [V.compare_series("TWD=X", ypts("usdtwd"), "FRED DEXTAUS", F.get("DEXTAUS"), 0.8,
-                                           note="聯準會紐約中午報價")], 3)
+                                           note="聯準會紐約中午報價")], decimals=3)
 
     # ------------------------------------------------------------ 股市 / 加密 / 波動率
     tw = ypts("taiex")
@@ -226,12 +278,14 @@ def main():
         tw, tw_fb = TW, True
     M["taiex"] = metric("taiex", "台股加權指數", "eq", "", tw, "Yahoo ^TWII" if not tw_fb else "證交所（備援）",
                         [V.compare_series("^TWII", tw, "證交所官方 FMTQIK", TW, 0.1)], 2, fallback=tw_fb)
-    M["spx"] = metric("spx", "S&P 500", "eq", "", ypts("spx"), "Yahoo ^GSPC",
-                      [V.compare_series("^GSPC", ypts("spx"), "FRED SP500", F.get("SP500"), 0.1)], 2)
+    h, src, fb = pick("spx", "Yahoo ^GSPC")
+    M["spx"] = metric("spx", "S&P 500", "eq", "", h, src, fallback=fb, checks=
+                      [V.compare_series("^GSPC", ypts("spx"), "FRED SP500", F.get("SP500"), 0.1)], decimals=2)
     M["sox"] = metric("sox", "費城半導體 SOX", "eq", "", ypts("sox"), "Yahoo ^SOX",
                       [V.compare(None, None, None, None, 0, note="無第二個免費來源（指數授權屬 Nasdaq）")], 2)
-    M["vix"] = metric("vix", "VIX 恐慌指數", "eq", "", ypts("vix"), "Yahoo ^VIX",
-                      [V.compare_series("^VIX", ypts("vix"), "FRED VIXCLS（Cboe）", F.get("VIXCLS"), 1.0)], 2)
+    h, src, fb = pick("vix", "Yahoo ^VIX")
+    M["vix"] = metric("vix", "VIX 恐慌指數", "eq", "", h, src, fallback=fb, checks=
+                      [V.compare_series("^VIX", ypts("vix"), "FRED VIXCLS（Cboe）", F.get("VIXCLS"), 1.0)], decimals=2)
     btc_hist = BIN or ypts("btc")
     btc_src = "Binance BTC/USDT（UTC 日切）" if BIN else "Yahoo BTC-USD（備援）"
     btc_px = BIN_PX or (btc_hist[-1][1] if btc_hist else None)
@@ -295,11 +349,12 @@ def main():
         "tw": [("2330.TW", "台積電"), ("2317.TW", "鴻海"), ("2454.TW", "聯發科"), ("2308.TW", "台達電"),
                ("2382.TW", "廣達"), ("3711.TW", "日月光"), ("2881.TW", "富邦金"), ("2891.TW", "中信金")],
     }
+    all_syms = [(sym, f"Yahoo {sym}", S.yahoo_chart, sym, "1mo", "1d") for lst in groups.values() for sym, _ in lst]
+    HR = pmap(all_syms, safe, workers=6) if time.time() - T0 < 360 else {}
     for g, lst in groups.items():
         heat[g] = []
         for sym, nm in lst:
-            r = safe(f"Yahoo {sym}", S.yahoo_chart, sym, "1mo", "1d")
-            pts = (r or {}).get("points") or []
+            pts = (HR.get(sym) or {}).get("points") or []
             heat[g].append({"sym": sym, "name": nm, "last": pts[-1][1] if pts else None,
                             "chg": chg(pts, 1), "chg5": chg(pts, 5), "date": pts[-1][0] if pts else None})
 

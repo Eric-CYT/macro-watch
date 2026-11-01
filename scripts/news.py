@@ -50,26 +50,35 @@ def _ts(entry):
     return None
 
 
+def _one(src, url):
+    items = []
+    r = _get(url, retries=1)
+    feed = feedparser.parse(r.content)
+    for e in feed.entries[:25]:
+        title = (e.get("title") or "").strip()
+        if not title:
+            continue
+        # Google News 標題結尾帶「 - 媒體名」
+        pub = src
+        if src.startswith("Google") and " - " in title:
+            title, pub = title.rsplit(" - ", 1)
+        items.append({"title": title, "url": e.get("link"), "source": pub,
+                      "t": _ts(e), "tags": tag(title)})
+    return items
+
+
 def fetch_news(limit=80):
+    from concurrent.futures import ThreadPoolExecutor
     items, errors = [], []
-    for src, url in FEEDS:
-        try:
-            r = _get(url, retries=2)
-            feed = feedparser.parse(r.content)
-            for e in feed.entries[:25]:
-                title = (e.get("title") or "").strip()
-                if not title:
-                    continue
-                # Google News 標題結尾帶「 - 媒體名」
-                pub = src
-                if src.startswith("Google") and " - " in title:
-                    title, pub = title.rsplit(" - ", 1)
-                items.append({"title": title, "url": e.get("link"), "source": pub,
-                              "t": _ts(e), "tags": tag(title)})
-        except Exception as ex:  # noqa: BLE001
-            errors.append(f"{src}: {ex}")
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {src: ex.submit(_one, src, url) for src, url in FEEDS}
+        for src, f in futs.items():
+            try:
+                items += f.result()
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"{src}: {e}")
     try:
-        r = _get(CNYES, params={"limit": 30}, retries=2)
+        r = _get(CNYES, params={"limit": 30}, retries=1)
         for n in r.json()["items"]["data"]:
             title = n.get("title", "").strip()
             items.append({"title": title, "url": f"https://news.cnyes.com/news/id/{n['newsId']}",
