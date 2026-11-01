@@ -261,10 +261,10 @@ def twse_taiex():
 
 # ---------------------------------------------------------------- BLS（官方原始發布）
 BLS_SERIES = {
-    "CUSR0000SA0": "CPIAUCSL",   # CPI-U 全項目 季調
-    "CUSR0000SA0L1E": "CPILFESL",  # 核心 CPI 季調
-    "CES0000000001": "PAYEMS",   # 非農就業 千人 季調
-    "LNS14000000": "UNRATE",     # 失業率 季調
+    "CUUR0000SA0": "CPIAUCNS",     # CPI-U 全項目 未季調（官方年增率即以此計算）
+    "CUUR0000SA0L1E": "CPILFENS",  # 核心 CPI 未季調
+    "CES0000000001": "PAYEMS",     # 非農就業 千人 季調
+    "LNS14000000": "UNRATE",       # 失業率 季調
 }
 
 
@@ -292,19 +292,33 @@ def bls_latest():
     return out
 
 
-# ---------------------------------------------------------------- ISM PMI（DBnomics 鏡像）
-def ism_pmi():
-    """ISM 製造業 PMI。ISM 自 2016 起不再授權 FRED；DBnomics 提供免費鏡像（2019 起）。"""
-    r = _get("https://api.db.nomics.world/v22/series/ISM/pmi/pm",
-             params={"observations": "1", "format": "json"})
-    doc = r.json()["series"]["docs"][0]
-    out = []
-    for p, v in zip(doc["period"], doc["value"]):
-        v = _num(v)
-        if v is not None:
-            out.append([f"{p[:7]}-01", v])
+# ---------------------------------------------------------------- ISM PMI（ISM 官網）
+MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august",
+          "september", "october", "november", "december"]
+
+
+def ism_latest():
+    """從 ISM 官網最新兩個月的報告頁抓 PMI。回傳 {'YYYY-MM-01': value}。
+    ISM 不開放 API；網頁標題格式為「Manufacturing PMI® at 54.5%」與「September 2026 ISM® Manufacturing PMI® Report」。"""
+    import re
+    now = datetime.now(timezone.utc)
+    out = {}
+    for back in (1, 2):
+        m = (now.month - back - 1) % 12
+        url = f"https://www.ismworld.org/supply-management-news-and-reports/reports/ism-pmi-reports/pmi/{MONTHS[m]}/"
+        try:
+            html = _get(url, session=_yahoo, retries=1).text
+        except Exception:  # noqa: BLE001
+            continue
+        mv = re.search(r"Manufacturing PMI\W{0,8}\s*(?:at|registered)\s*([\d.]+)\s*%", html)
+        my = re.search(r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+(20\d\d)\s+ISM", html)
+        if mv and my:
+            v = _num(mv.group(1))
+            if v and 25 <= v <= 80:  # 合理範圍檢查，避免抓到子指數
+                mon = MONTHS.index(my.group(1).lower()) + 1
+                out[f"{my.group(2)}-{mon:02d}-01"] = v
     if not out:
-        raise RuntimeError("ISM empty")
+        raise RuntimeError("ISM 官網無法解析")
     return out
 
 

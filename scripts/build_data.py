@@ -123,7 +123,7 @@ def main():
         "DCOILWTICO": ago(120), "PCOPPUSDM": ago(400), "DEXJPUS": ago(60), "DEXTAUS": ago(60),
         "DEXUSEU": ago(60), "DEXUSUK": ago(60), "DEXCAUS": ago(60), "DEXSDUS": ago(60), "DEXSZUS": ago(60),
         "VIXCLS": ago(60), "SP500": ago(60),
-        "CPIAUCSL": "2010-01-01", "CPILFESL": "2010-01-01", "PAYEMS": "2010-01-01", "UNRATE": "2010-01-01",
+        "CPIAUCNS": "2010-01-01", "CPILFENS": "2010-01-01", "PAYEMS": "2010-01-01", "UNRATE": "2010-01-01",
     }
     log("開始抓取 FRED")
     F = pmap([(sid, f"FRED {sid}", S.fred, sid, st) for sid, st in FSTART.items()], safe, workers=8)
@@ -133,14 +133,26 @@ def main():
     BIN_PX = safe("Binance price", S.binance_price, "BTCUSDT")
     CG = safe("CoinGecko", S.coingecko_prices) or {}
     TW = safe("TWSE", S.twse_taiex)
-    ISM = safe("DBnomics ISM", S.ism_pmi)
+    # ISM：已驗證歷史 + 官網新值，累積保存
+    ism_seed = json.loads((ROOT / "shared" / "ism_seed.json").read_text(encoding="utf-8"))["data"]
+    ism_cache_f = arch / "cache" / "ism.json"
+    ism_hist = dict(ism_seed)
+    if ism_cache_f.exists():
+        ism_hist.update(json.loads(ism_cache_f.read_text()))
+    ISM_NEW = safe("ISM 官網", S.ism_latest) or {}
+    ism_conflict = {d: (ism_hist[d], v) for d, v in ISM_NEW.items() if d in ism_hist and abs(ism_hist[d] - v) > 0.05}
+    for d, v in ISM_NEW.items():
+        if d not in ism_seed:  # 已驗證的種子值不被覆寫
+            ism_hist[d] = v
+    ism_cache_f.write_text(json.dumps({d: v for d, v in ism_hist.items() if d not in ism_seed}, indent=1))
+    ISM = sorted([d, v] for d, v in ism_hist.items())
 
     # BLS 每日額度 25 次 → 只在快取超過 10 小時才打
     bls_cache = arch / "cache" / "bls.json"
     BLS = None
     if bls_cache.exists():
         c = json.loads(bls_cache.read_text())
-        if now.timestamp() - c.get("t", 0) < 10 * 3600:
+        if now.timestamp() - c.get("t", 0) < 10 * 3600 and set(c.get("data", {})) == set(S.BLS_SERIES.values()):
             BLS = c["data"]
     if BLS is None:
         fresh = safe("BLS", S.bls_latest)
@@ -226,8 +238,8 @@ def main():
     # ------------------------------------------------------------ 原物料
     h, src, fb = pick("wti", "Yahoo CL=F（近月期貨）")
     M["wti"] = metric("wti", "WTI 原油", "cmdty", "USD/bbl", h, src,
-                      [V.compare_series("CL=F", ypts("wti"), "FRED WTI 現貨", F.get("DCOILWTICO"), 2.5,
-                                        note="期貨近月 vs 庫欣現貨，換月時差距會放大")], fallback=fb)
+                      [V.compare_series("CL=F", ypts("wti"), "FRED WTI 現貨", F.get("DCOILWTICO"), 6.0,
+                                        note="期貨近月 vs 庫欣現貨：強烈逆價差時現貨可比近月高數%，此項為量級檢查")], fallback=fb)
     h, src, fb = pick("gold", "Yahoo GC=F（近月期貨）")
     M["gold"] = metric("gold", "黃金", "cmdty", "USD/oz", h, src,
                        [V.compare("GC=F 即時", yprice("gold"), "PAXG（CoinGecko）", (CG.get("pax-gold") or {}).get("usd"), 2.5,
@@ -318,17 +330,24 @@ def main():
                                 max_lag_days=70)
 
     macro = {
-        "cpi": {"name": "CPI 年增率", "unit": "%", "series": yoy(F.get("CPIAUCSL")),
-                "checks": [bls_chk("CPIAUCSL", 0.0015)], "source": "FRED CPIAUCSL（季調）"},
-        "core": {"name": "核心 CPI 年增率", "unit": "%", "series": yoy(F.get("CPILFESL")),
-                 "checks": [bls_chk("CPILFESL", 0.0015)], "source": "FRED CPILFESL（季調）"},
+        "cpi": {"name": "CPI 年增率", "unit": "%", "series": yoy(F.get("CPIAUCNS")),
+                "checks": [bls_chk("CPIAUCNS", 0.0015)], "source": "FRED CPIAUCNS（未季調，同 BLS 官方年增率算法）"},
+        "core": {"name": "核心 CPI 年增率", "unit": "%", "series": yoy(F.get("CPILFENS")),
+                 "checks": [bls_chk("CPILFENS", 0.0015)], "source": "FRED CPILFENS（未季調）"},
         "nfp": {"name": "非農新增就業", "unit": "千人", "series": diff(F.get("PAYEMS")),
                 "checks": [bls_chk("PAYEMS", 0.5)], "source": "FRED PAYEMS 月差"},
         "unrate": {"name": "失業率", "unit": "%", "series": F.get("UNRATE") or [],
                    "checks": [bls_chk("UNRATE", 0.05)], "source": "FRED UNRATE"},
-        "ism": {"name": "ISM 製造業 PMI", "unit": "", "series": ISM or [],
-                "checks": [V.compare(None, None, None, None, 0, note="ISM 未授權 FRED；使用 DBnomics 免費鏡像，單一來源")],
-                "source": "ISM via DBnomics"},
+        "ism": {"name": "ISM 製造業 PMI", "unit": "", "series": ISM,
+                "checks": ([{"status": "warn", "a": "已驗證值", "b": "ISM 官網", "va": a, "vb": b,
+                             "diff": round(b - a, 2), "tol": 0.05, "unit": "", "on": d,
+                             "note": "官網數值與已驗證紀錄不一致（可能為修正值），請人工確認"}
+                            for d, (a, b) in ism_conflict.items()]
+                           or [V.compare(None, None, None, None, 0,
+                                         note=("ISM 官網本次抓取成功：" + "、".join(f"{d[:7]}={v}" for d, v in sorted(ISM_NEW.items()))
+                                               if ISM_NEW else "ISM 官網本次未抓到，使用已驗證歷史值")
+                                         + "；ISM 不授權 FRED，2025/12 以前無免費來源")]),
+                "source": "ISM Report On Business（官網）"},
     }
     for k, m in macro.items():
         m["status"] = V.worst(m["checks"]) if m["series"] else "missing"

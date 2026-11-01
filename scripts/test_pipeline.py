@@ -108,9 +108,9 @@ def install_mocks():
             return tr2[:-1]
         if sid == "T10Y2Y":
             return [[a[0], round(a[1] - b[1], 2)] for a, b in zip(tr10, tr2)][:-1]
-        if sid in ("CPIAUCSL",):
+        if sid in ("CPIAUCNS",):
             return _monthly(218, 200, 0.45, 0.2, 1)
-        if sid == "CPILFESL":
+        if sid == "CPILFENS":
             return _monthly(220, 200, 0.45, 0.15, 2)
         if sid == "PAYEMS":
             return _monthly(130000, 200, 130, 80, 3)
@@ -134,8 +134,8 @@ def install_mocks():
     S.coingecko_prices = lambda ids=(): {"bitcoin": {"usd": yahoo_chart("BTC-USD")["price"] * 1.001},
                                          "pax-gold": {"usd": yahoo_chart("GC=F")["price"] * 0.99}}
     S.twse_taiex = lambda: yahoo_chart("^TWII")["points"][-20:]
-    S.ism_pmi = lambda: [[d, round(49 + 2 * math.sin(i / 6), 1)] for i, (d, _) in enumerate(_monthly(0, 200, 0, 0, 5))][-90:]
-    S.bls_latest = lambda: {"CPIAUCSL": fred("CPIAUCSL")[-24:], "CPILFESL": fred("CPILFESL")[-24:],
+    S.ism_latest = lambda: {"2026-09-01": 54.5, "2026-10-01": 53.9}
+    S.bls_latest = lambda: {"CPIAUCNS": fred("CPIAUCNS")[-24:], "CPILFENS": fred("CPILFENS")[-24:],
                             "PAYEMS": fred("PAYEMS")[-24:], "UNRATE": fred("UNRATE")[-24:]}
     S.bls_release_calendar = lambda: {"2026-11-13": ["CPI"], "2026-11-06": ["NFP"]}
     news.fetch_news = lambda limit=80: {"updated": 0, "errors": [], "items": [
