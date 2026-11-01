@@ -47,6 +47,32 @@ export function normalize(t) {
   return out
 }
 
+export const QMETA = {
+  q1: { title: '當前市場正在幹甚麼？', short: '在幹嘛' },
+  q2: { title: '趨勢的起點在哪裡？', short: '起點' },
+  q3: { title: '當前趨勢是甚麼？', short: '趨勢' },
+  q4: { title: '當前趨勢的級別是甚麼？', short: '級別' },
+  q5: { title: '你的偏見是甚麼？', short: '偏見' },
+  q6: { title: '你是順哪個大、逆哪個小？', short: '順大逆小' },
+  q7: { title: '你的防守位在哪？', short: '防守' },
+  q8: { title: '要不要到交易週期裡面去？', short: '決策' },
+  q9: { title: '資金在幹嘛？', short: '資金' },
+  q10: { title: '資金會去哪？', short: '資金去向' },
+  q11: { title: '目前技術分析的情況？是否適合進場？', short: '技術面' },
+  q12: { title: '獲利價？', short: '獲利價' },
+}
+export const DEFAULT_ORDER = Object.keys(QMETA)
+const OKEY = 'mdj.trade.order.v1'
+export function loadOrder() {
+  try {
+    const o = JSON.parse(localStorage.getItem(OKEY) || 'null')
+    if (!Array.isArray(o)) return [...DEFAULT_ORDER]
+    // 防呆：補上未來新增的題目、移除不存在的題目
+    return [...o.filter((k) => QMETA[k]), ...DEFAULT_ORDER.filter((k) => !o.includes(k))]
+  } catch { return [...DEFAULT_ORDER] }
+}
+export function saveOrder(o) { try { localStorage.setItem(OKEY, JSON.stringify(o)) } catch { /* ignore */ } }
+
 export function loadTrades() { try { return JSON.parse(localStorage.getItem(TKEY) || '[]').map(normalize) } catch { return [] } }
 export function saveTrades(list) { localStorage.setItem(TKEY, JSON.stringify(list)) }
 export function addTrade(t) {
@@ -150,7 +176,7 @@ export function checks(t, ref) {
   if (bias && t.q6.bigDir && bias !== '中性' && ((bias === '偏多' && t.q6.bigDir === '下降') || (bias === '偏空' && t.q6.bigDir === '上升')))
     out.push({ level: 'warn', msg: `你的偏見（${bias}）與要順的大級別方向（${t.q6.bigDir}）相反，等於逆大勢操作` })
   if (t.q3.trend && t.q6.bigDir && t.q4.level && t.q4.level === t.q6.bigLevel && t.q3.trend !== t.q6.bigDir)
-    out.push({ level: 'warn', msg: `第 3 題趨勢（${t.q3.trend}）與第 6 題同級別的方向（${t.q6.bigDir}）不一致` })
+    out.push({ level: 'warn', msg: `「趨勢」（${t.q3.trend}）與「順大逆小」同級別的方向（${t.q6.bigDir}）不一致` })
   if (e != null && s != null) {
     if (bias === '偏多' && s >= e) out.push({ level: 'error', msg: '偏多但防守位不低於進場價，停損方向錯了' })
     if (bias === '偏空' && s <= e) out.push({ level: 'error', msg: '偏空但防守位不高於進場價，停損方向錯了' })
@@ -170,7 +196,7 @@ export function checks(t, ref) {
   if (dec === '進場' && !t.q8.cycle) out.push({ level: 'warn', msg: '請選擇交易週期，週期決定防守位與持有時間' })
   if (bias === '偏多' && ['流出', '去槓桿（被動賣壓）'].includes(t.q9.state)) out.push({ level: 'warn', msg: `偏多但你判斷資金正在「${t.q9.state}」：逆著資金做多需要更強的理由` })
   if (bias === '偏空' && ['流入', '槓桿推升（投機）'].includes(t.q9.state)) out.push({ level: 'warn', msg: `偏空但你判斷資金正在「${t.q9.state}」：逆著資金做空需要更強的理由` })
-  if (dec === '進場' && t.q11.verdict === '不適合進場') out.push({ level: 'error', msg: '技術面判斷「不適合進場」，第 8 題卻決定進場' })
+  if (dec === '進場' && t.q11.verdict === '不適合進場') out.push({ level: 'error', msg: '技術面判斷「不適合進場」，「要不要進場」卻選了進場' })
   if (dec === '進場' && t.q11.verdict === '等待確認訊號') out.push({ level: 'warn', msg: '技術面還在等確認訊號，現在進場是否太早？' })
   if (dec === '進場' && !t.q12.t1) out.push({ level: 'warn', msg: '決定進場但沒有獲利價：何時出場？' })
   if (ref && t.q3.trend && t.q4.level === '日線' && ref.trend !== t.q3.trend)
