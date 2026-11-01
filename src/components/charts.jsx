@@ -198,10 +198,21 @@ const FLOW_ASSETS = [
   { k: 'us10y', label: '美債', grp: '債券', bond: true },
 ]
 
-function flowScore(m, n, bond) {
+function flowScore(m, sel, bond) {
   const h = m?.history
   if (!h || h.length < 70) return null
   const v = h.map((p) => p[1])
+  // 起點：自訂日期 → 該日（或之前最近一個交易日）的收盤；否則往回 N 根
+  let base
+  if (sel.type === 'date') {
+    base = -1
+    for (let i = h.length - 1; i >= 0; i--) if (h[i][0] <= sel.d) { base = i; break }
+    if (base < 0 || base >= h.length - 1) return null
+  } else {
+    base = h.length - 1 - sel.n
+    if (base < 0) return null
+  }
+  const n = h.length - 1 - base
   const daily = []
   for (let i = v.length - 61; i < v.length; i++) {
     if (i < 1) continue
@@ -210,22 +221,37 @@ function flowScore(m, n, bond) {
   const hist = daily.slice(0, -1)
   const mu = hist.reduce((s, x) => s + x, 0) / hist.length
   const sd = Math.sqrt(hist.reduce((s, x) => s + (x - mu) ** 2, 0) / hist.length)
-  const a = v[v.length - 1 - n], b = v[v.length - 1]
+  const a = v[base], b = v[v.length - 1]
   const raw = bond ? -(b - a) * 100 : (b / a - 1) * 100
   const z = sd ? raw / (sd * Math.sqrt(n)) : 0
-  return { z: +z.toFixed(2), raw, from: h[h.length - 1 - n][0], to: h[h.length - 1][0] }
+  return { z: +z.toFixed(2), raw, n, from: h[base][0], to: h[h.length - 1][0] }
 }
 
+const FLOW_KEY = 'mdj.flow.v1'
+const loadFlowSel = () => { try { return JSON.parse(localStorage.getItem(FLOW_KEY)) || { type: 'n', n: 1 } } catch { return { type: 'n', n: 1 } } }
+
 export function FlowChart({ metrics }) {
-  const [n, setN] = useState(1)
+  const [sel, setSelRaw] = useState(loadFlowSel)
   const [sorted, setSorted] = useState(false)
+  const [nInput, setNInput] = useState(sel.type === 'n' ? String(sel.n) : '')
+  const setSel = (x) => { setSelRaw(x); try { localStorage.setItem(FLOW_KEY, JSON.stringify(x)) } catch { /* 無痕模式 */ } }
+  const maxN = useMemo(() => Math.max(1, Math.min(...FLOW_ASSETS.map((a) => (metrics?.[a.k]?.history?.length || 400) - 1))), [metrics])
   const data = useMemo(() => {
     const rows = FLOW_ASSETS.map((a) => {
-      const s = flowScore(metrics?.[a.k], n, a.bond)
+      const s = flowScore(metrics?.[a.k], sel, a.bond)
       return s && { ...a, ...s }
     }).filter(Boolean)
     return sorted ? [...rows].sort((x, y) => y.z - x.z) : rows
-  }, [metrics, n, sorted])
+  }, [metrics, sel, sorted])
+  const applyN = (raw) => {
+    const n = Math.round(Number(raw))
+    if (!Number.isFinite(n) || n < 1) return
+    const c = Math.min(n, maxN)
+    setNInput(String(c))
+    setSel({ type: 'n', n: c })
+  }
+  const today = new Date().toISOString().slice(0, 10)
+  const span = data.length ? `${data[0].from === data.at(-1).from ? data[0].from : '各市場起點略異'} → 最新` : ''
   const lim = Math.max(2, Math.ceil(Math.max(...data.map((d) => Math.abs(d.z)), 0)))
   const inflow = data.filter((d) => d.z >= 0.5).map((d) => d.label)
   const outflow = data.filter((d) => d.z <= -0.5).map((d) => d.label)
@@ -237,14 +263,33 @@ export function FlowChart({ metrics }) {
           <span className="mx-2">｜</span>
           {outflow.length ? <>流出：<span className="down">{outflow.join('、')}</span></> : '無明顯流出'}
         </div>
-        <div className="flex gap-1">
-          {[[1, '1D'], [5, '5D'], [20, '20D']].map(([v, l]) => (
-            <button key={v} onClick={() => setN(v)}
-              className={`text-[11px] px-2 py-0.5 rounded ${n === v ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>{l}</button>
+        <div className="flex gap-1 flex-wrap items-center">
+          {[[1, '1D'], [5, '5D'], [20, '20D'], [60, '60D']].map(([v, l]) => (
+            <button key={v} onClick={() => { setNInput(String(v)); setSel({ type: 'n', n: v }) }}
+              className={`text-[11px] px-2 py-0.5 rounded ${sel.type === 'n' && sel.n === v ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>{l}</button>
           ))}
+          <label className={`flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded ${sel.type === 'n' && ![1, 5, 20, 60].includes(sel.n) ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>
+            自訂
+            <input type="number" inputMode="numeric" min="1" max={maxN} value={nInput}
+              onChange={(e) => setNInput(e.target.value)}
+              onBlur={(e) => applyN(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && applyN(e.currentTarget.value)}
+              className="w-12 bg-bg text-ink border border-line rounded px-1 py-0 text-[11px] num" aria-label="自訂交易日數" />
+            日
+          </label>
+          <label className={`flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded ${sel.type === 'date' ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>
+            起始日
+            <input type="date" max={today} value={sel.type === 'date' ? sel.d : ''}
+              onChange={(e) => e.target.value && setSel({ type: 'date', d: e.target.value })}
+              className="bg-bg text-ink border border-line rounded px-1 py-0 text-[11px] num [color-scheme:dark]" aria-label="起始日期" />
+          </label>
           <button onClick={() => setSorted((s) => !s)}
             className={`text-[11px] px-2 py-0.5 rounded ${sorted ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>排序</button>
         </div>
+      </div>
+      <div className="text-[10px] text-muted num mb-1">
+        區間：{sel.type === 'date' ? `${sel.d} 起（${span}）` : `最近 ${sel.n} 個交易日（${span}）`}
+        {sel.type === 'n' && <span>　可輸入 1–{maxN}</span>}
       </div>
       <div className="h-56">
         <ResponsiveContainer>
