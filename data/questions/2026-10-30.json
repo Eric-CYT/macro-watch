@@ -1,0 +1,243 @@
+{
+ "date": "2026-10-30",
+ "generated_at": "2026-11-01T09:10:47+00:00",
+ "engine": "rules",
+ "events": [],
+ "snapshot": {
+  "vix": {
+   "v": 19.420000076293945,
+   "chg_1d": 12.907,
+   "rate": false
+  },
+  "dxy": {
+   "v": 101.87999725341797,
+   "chg_1d": -0.157,
+   "rate": false
+  },
+  "us10y": {
+   "v": 4.94,
+   "chg_1d": -4.0,
+   "rate": true
+  },
+  "us02y": {
+   "v": 4.56,
+   "chg_1d": -5.0,
+   "rate": true
+  },
+  "spread": {
+   "v": 0.38,
+   "chg_1d": 1.0,
+   "rate": true
+  },
+  "usdjpy": {
+   "v": 157.8040008544922,
+   "chg_1d": -0.018,
+   "rate": false
+  },
+  "usdtwd": {
+   "v": 32.566898345947266,
+   "chg_1d": 0.569,
+   "rate": false
+  },
+  "btc": {
+   "v": 78223.44,
+   "chg_1d": 0.827,
+   "rate": false
+  },
+  "taiex": {
+   "v": 45211.828125,
+   "chg_1d": -2.494,
+   "rate": false
+  },
+  "spx": {
+   "v": 7580.06982421875,
+   "chg_1d": -1.818,
+   "rate": false
+  },
+  "sox": {
+   "v": 10688.7998046875,
+   "chg_1d": -7.201,
+   "rate": false
+  },
+  "gold": {
+   "v": 3898.89990234375,
+   "chg_1d": -3.287,
+   "rate": false
+  },
+  "wti": {
+   "v": 104.12000274658203,
+   "chg_1d": 2.078,
+   "rate": false
+  },
+  "copper": {
+   "v": 6.48199987411499,
+   "chg_1d": -1.504,
+   "rate": false
+  }
+ },
+ "moves": {
+  "us10y": {
+   "chg": -4.0,
+   "unit": "bp",
+   "z": -0.76,
+   "date": "2026-10-30"
+  },
+  "us02y": {
+   "chg": -5.0,
+   "unit": "bp",
+   "z": -0.89,
+   "date": "2026-10-30"
+  },
+  "spread": {
+   "chg": 1.0,
+   "unit": "bp",
+   "z": 0.3,
+   "date": "2026-10-30"
+  },
+  "wti": {
+   "chg": 2.08,
+   "unit": "%",
+   "z": 0.84,
+   "date": "2026-10-29"
+  },
+  "gold": {
+   "chg": -3.29,
+   "unit": "%",
+   "z": -2.68,
+   "date": "2026-10-29"
+  },
+  "copper": {
+   "chg": -1.5,
+   "unit": "%",
+   "z": -1.17,
+   "date": "2026-10-29"
+  },
+  "dxy": {
+   "chg": -0.16,
+   "unit": "%",
+   "z": -0.54,
+   "date": "2026-10-29"
+  },
+  "usdjpy": {
+   "chg": -0.02,
+   "unit": "%",
+   "z": -0.04,
+   "date": "2026-10-30"
+  },
+  "usdtwd": {
+   "chg": 0.57,
+   "unit": "%",
+   "z": 2.24,
+   "date": "2026-10-30"
+  },
+  "taiex": {
+   "chg": -2.49,
+   "unit": "%",
+   "z": -2.11,
+   "date": "2026-10-30"
+  },
+  "spx": {
+   "chg": -1.82,
+   "unit": "%",
+   "z": -3.06,
+   "date": "2026-10-30"
+  },
+  "sox": {
+   "chg": -7.2,
+   "unit": "%",
+   "z": -3.03,
+   "date": "2026-10-30"
+  },
+  "vix": {
+   "chg": 12.91,
+   "unit": "%",
+   "z": 2.13,
+   "date": "2026-10-30"
+  },
+  "btc": {
+   "chg": 0.83,
+   "unit": "%",
+   "z": 0.44,
+   "date": "2026-11-01"
+  }
+ },
+ "questions": [
+  {
+   "text": "今天波動最大的是 S&P 500 -1.82%（3.1 個標準差）。你認為這次走低是由什麼驅動？它是一次性的消息衝擊，還是趨勢的延續？其他資產有沒有『確認』這個訊號？",
+   "hint": "看市場寬度：是少數權值股撐盤還是普漲？對照等權重指數。",
+   "assets": [
+    "spx"
+   ],
+   "type": "mover"
+  },
+  {
+   "text": "今天新聞焦點集中在「半導體」（17 則），例如：「DeepSeek推出Super-agent架構！打造24小時自主AI代理、跨平台並行處理多項任務」。這個主題有反映在價格上嗎？哪個資產的反應最不合理？",
+   "hint": "新聞多但價格不動 = 已定價或不重要；新聞少但價格大動 = 可能有你沒看到的資訊。",
+   "assets": [],
+   "type": "news"
+  },
+  {
+   "text": "費城半導體 SOX -7.2%（3.0 個標準差）。如果這個走勢再延續一週，你的部位或觀察清單中哪一項會最先受影響？你會怎麼調整？",
+   "hint": "區分是基本面（財報/指引）還是利率估值壓縮；看龍頭與二線股是否同向。",
+   "assets": [
+    "sox"
+   ],
+   "type": "mover"
+  }
+ ],
+ "headlines": [
+  {
+   "title": "DeepSeek推出Super-agent架構！打造24小時自主AI代理、跨平台並行處理多項任務",
+   "url": "https://news.cnyes.com/news/id/6643211",
+   "tags": [
+    "半導體"
+   ]
+  },
+  {
+   "title": "台積電還能再漲153%？外媒估2030年股價1110美元「現在買資產翻倍」",
+   "url": "https://news.google.com/rss/articles/CBMiT0FVX3lxTE11SVJvNVVFNnVPNXlHUmtPQmR3LThtRmNpaGNGNy1lZWZxLUs0M1lYODFZLVlsSENCX0lYdkZQT3JhQkVFUHFLQVdoYW1ZcXM?oc=5",
+   "tags": [
+    "半導體",
+    "匯率"
+   ]
+  },
+  {
+   "title": "盼追加預算11月順利過關 卓揆：讓普發1萬最快春節前發錢 行政準備絕不拖延",
+   "url": "https://news.cnyes.com/news/id/6643192",
+   "tags": []
+  },
+  {
+   "title": "國1五堵至汐止段不再「打結」！卓揆：基北往返尖峰省15分鐘 車速升至80公里",
+   "url": "https://news.cnyes.com/news/id/6643168",
+   "tags": []
+  },
+  {
+   "title": "〈台股風向球〉融資恐殺出引爆補跌壓力 台股走勢可能有2種情境",
+   "url": "https://news.google.com/rss/articles/CBMiT0FVX3lxTE9UZE83c0tJVkVERE4tZE4wWVlKVWxEMVB6V2g4UTk5QXZKTTFUMVFBbUdPN0cyZkVqS3lBanhhMjc3S2FDc0VjQ2xKWUZQV3M?oc=5",
+   "tags": [
+    "台股"
+   ]
+  },
+  {
+   "title": "全力穩市場！陸央行、證監會傳2日開會推動資本市場工具落地",
+   "url": "https://news.google.com/rss/articles/CBMiUEFVX3lxTE5MbXNUcmo2Z1NYR3pBelFBNExzMHp6LXZmTk5PS0hpM29lSndtMTcxbHNrdjVkY0VJSzhSTFcyMWVTZS1JVGlNR0s5ZE9xc3pt0gFWQVVfeXFMUGU1NS1JV0ZwMEk4NU9CbElDbmJZMzFoZ0k2LWVLSVRZOWMzSmJSTFA2OFctUTZsSjB3bWtLVnhMZk9JSVM1RTdHX2pSeUpqSjBwdEVyZUE?oc=5",
+   "tags": [
+    "FED"
+   ]
+  },
+  {
+   "title": "2330 台積電 - 🌸 一剛一柔，四季有序：夏蟲漸遠，秋桂飄香。非買賣建議！ - 股市爆料同學會",
+   "url": "https://news.google.com/rss/articles/CBMiWEFVX3lxTE1sRk9vSjlBaEMtbXpSdmd5Z1RoTDdVaEVyeS0xc3Y2a2VQR3BraU9Za0VFSGo0RXdQR25RTWhIQVE0T1ZtQjJFeEU2RjVRZGQ0TWREa3dfdU8?oc=5",
+   "tags": [
+    "半導體"
+   ]
+  },
+  {
+   "title": "Indian 10-year bond yields may ease to 6.75%-7% by March 2027, rupee likely to appreciate: SBI Research",
+   "url": "https://news.google.com/rss/articles/CBMi4wFBVV95cUxQaFFFU3lnbllCblVFTTVmbm9kd3VIWlhrZUNMbmNpbXh1eTNPQV80SENwMGltaEc2b0Y0N1Q2djh0MWlveDRET2V2MWJtd2pMeG8tVURoNUF3Sy0wQ1B4OURpaTNuN2NkaU9GQUFtaUR6RzFGWFhaTm41ZmJINDJrdjlGRURWcDViYjZpc2FYMjNDY2tFTm5kMlJhRUN4RkpVWE1leXVhbVlobC1STFZtOUNOdHN0c3Z3WHpQZnRIVml2MEZPSUNfNXdvMlpwSHlxT240XzdrZlJKSHdGczlBWHVmMA?oc=5",
+   "tags": [
+    "債市"
+   ]
+  }
+ ]
+}
