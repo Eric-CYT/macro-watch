@@ -1,0 +1,9 @@
+{
+  "name": "Macro & Market Watch",
+  "short_name": "Macro Watch",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#121211",
+  "theme_color": "#121211",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

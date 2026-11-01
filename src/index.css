@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #121211;
+  --color-surface: #1a1a19;
+  --color-surface2: #232321;
+  --color-line: #33332f;
+  --color-ink: #f0efec;
+  --color-ink2: #c3c2b7;
+  --color-muted: #8d8c84;
+  --color-s1: #3987e5;   /* series 1 blue  */
+  --color-s2: #d95926;   /* series 2 orange */
+  --color-s3: #199e70;   /* series 3 aqua  */
+  --color-good: #0ca30c;
+  --color-warning: #fab219;
+  --color-serious: #ec835a;
+  --color-critical: #d03b3b;
+  --font-sans: "Inter", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+:root {
+  color-scheme: dark;
+  /* 漲跌色：預設台灣慣例 紅漲綠跌，可在設定切換 */
+  --up: #ef5f5f;
+  --down: #2fb36a;
+}
+:root[data-conv="us"] {
+  --up: #2fb36a;
+  --down: #ef5f5f;
+}
+
+html, body, #root { background: var(--color-bg); color: var(--color-ink); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+
+/* 警報高亮：脈動外框；尊重「減少動態效果」設定 */
+@keyframes alertpulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--alert-c, #fab219), 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 2px var(--alert-c, #fab219), 0 0 18px 2px color-mix(in srgb, var(--alert-c, #fab219) 45%, transparent); }
+}
+.alerting { animation: alertpulse 1.6s ease-in-out infinite; border-radius: 0.75rem; }
+@media (prefers-reduced-motion: reduce) {
+  .alerting { animation: none; box-shadow: 0 0 0 2px var(--alert-c, #fab219); }
+}
+
+.scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #3a3a36; border-radius: 3px; }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
