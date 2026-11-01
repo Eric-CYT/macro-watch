@@ -66,22 +66,36 @@ def _num(x):
 
 # ---------------------------------------------------------------- FRED
 def fred(series_id: str, start: str | None = None):
-    """FRED 公開 CSV（不需 key）。'.' 代表缺值（例如假日、政府停擺）。"""
+    """FRED。依序嘗試：公開 CSV（瀏覽器指紋）→ 公開 CSV（一般 UA）→ 官方 API（需免費 FRED_API_KEY）。
+    '.' 代表缺值（例如假日、政府停擺）。"""
+    import os
     params = {"id": series_id}
     if start:
         params["cosd"] = start
-    r = _get("https://fred.stlouisfed.org/graph/fredgraph.csv", params=params)
-    rows = list(csv.reader(io.StringIO(r.text)))
-    out = []
-    for row in rows[1:]:
-        if len(row) < 2:
-            continue
-        v = _num(row[1])
-        if v is not None:
-            out.append([row[0][:10], v])
-    if not out:
-        raise RuntimeError(f"FRED {series_id} empty")
-    return out
+    errs = []
+    attempts = [(_yahoo, {}), (_session, {"headers": {"User-Agent": "macro-watch/1.0 (+github actions)"}})]
+    for sess, kw in attempts:
+        try:
+            r = _get("https://fred.stlouisfed.org/graph/fredgraph.csv", session=sess, params=params, retries=1, **kw)
+            if not r.text.lstrip().lower().startswith(("observation_date", "date")):
+                raise RuntimeError("回應不是 CSV（可能被阻擋）")
+            rows = list(csv.reader(io.StringIO(r.text)))
+            out = [[row[0][:10], _num(row[1])] for row in rows[1:] if len(row) >= 2 and _num(row[1]) is not None]
+            if out:
+                return out
+            raise RuntimeError("empty")
+        except Exception as e:  # noqa: BLE001
+            errs.append(str(e)[:80])
+    key = os.environ.get("FRED_API_KEY")
+    if key:
+        p = {"series_id": series_id, "api_key": key, "file_type": "json"}
+        if start:
+            p["observation_start"] = start
+        r = _get("https://api.stlouisfed.org/fred/series/observations", params=p, retries=2)
+        out = [[o["date"], _num(o["value"])] for o in r.json()["observations"] if _num(o["value"]) is not None]
+        if out:
+            return out
+    raise RuntimeError(f"FRED {series_id} 全部方式失敗: {' | '.join(errs)}")
 
 
 # ---------------------------------------------------------------- 美國財政部
@@ -149,8 +163,12 @@ def yahoo_chart(symbol: str, rng: str = "2y", interval: str = "1d"):
         if v is None:
             continue
         if interval.endswith("d") or interval.endswith("wk") or interval.endswith("mo"):
-            d = datetime.fromtimestamp(t + off, tz=timezone.utc).strftime("%Y-%m-%d")
-            pts.append([d, v])
+            lt = datetime.fromtimestamp(t + off, tz=timezone.utc)
+            # CME 期貨（CL=F、GC=F、HG=F…）的日 K 時間戳記是「前一晚 18:00 開盤」，
+            # 當地時間 16 點以後的戳記代表隔天的交易日
+            if lt.hour >= 16:
+                lt += timedelta(days=1)
+            pts.append([lt.strftime("%Y-%m-%d"), v])
         else:
             pts.append([int(t), v])
     if interval.endswith("d"):  # 同日去重（保留最後一筆）
