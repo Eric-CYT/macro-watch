@@ -58,25 +58,34 @@ export function mergeEntries(a, b) {
   return out
 }
 
-export async function syncGithub(cfg) {
-  const { owner, repo, token, path = 'journal.json' } = cfg
+async function syncFile(cfg, path, localData, merge) {
+  const { owner, repo, token } = cfg
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
   const h = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }
-  let remote = {}, sha
+  let remote = null, sha
   const r = await fetch(url, { headers: h, cache: 'no-store' })
   if (r.status === 200) {
     const j = await r.json()
     sha = j.sha
-    remote = JSON.parse(b64d(j.content) || '{}')
+    remote = JSON.parse(b64d(j.content) || 'null')
   } else if (r.status !== 404) {
     throw new Error(`讀取失敗 HTTP ${r.status}（檢查 repo 名稱與 token 權限）`)
   }
-  const merged = mergeEntries(remote, loadEntries())
-  saveEntries(merged)
-  const body = { message: `journal sync ${new Date().toISOString()}`, content: b64e(JSON.stringify(merged, null, 1)) }
+  const merged = merge(remote, localData)
+  const body = { message: `${path} sync ${new Date().toISOString()}`, content: b64e(JSON.stringify(merged, null, 1)) }
   if (sha) body.sha = sha
   const w = await fetch(url, { method: 'PUT', headers: h, body: JSON.stringify(body) })
-  if (!w.ok) throw new Error(`寫入失敗 HTTP ${w.status}`)
+  if (!w.ok) throw new Error(`寫入 ${path} 失敗 HTTP ${w.status}`)
+  return merged
+}
+
+/** 同步日誌（journal.json）與交易前檢查（trades.json）到私人 repo */
+export async function syncGithub(cfg) {
+  const merged = await syncFile(cfg, cfg.path || 'journal.json', loadEntries(), (remote, local) => mergeEntries(remote || {}, local))
+  saveEntries(merged)
+  const { loadTrades, saveTrades, mergeTrades } = await import('./trades.js')
+  const trades = await syncFile(cfg, 'trades.json', loadTrades(), (remote, local) => mergeTrades(remote || [], local))
+  saveTrades(trades)
   return merged
 }
 
