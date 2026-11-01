@@ -179,3 +179,96 @@ export function MacroChart({ m, kind = 'line', years = 8, ref50, extra }) {
     </div>
   )
 }
+
+/* --------------------------------------------------------- 跨資產資金流向（代理指標）
+ * 免費管道沒有可靠的每日「實際申贖資金」數據，因此用「波動調整後報酬」當代理：
+ *   σ 值 = N 日報酬 ÷ (近 60 日日報酬標準差 × √N)
+ * 不同資產的波動差很多（BTC 一天 3% 很普通，美元 1% 就很大），換算成 σ 後才能放在同一把尺上比較。
+ * 美債以「價格方向」呈現：殖利率下跌 = 債券價格上漲 = 資金流入，故取 −Δ殖利率。
+ */
+const FLOW_ASSETS = [
+  { k: 'gold', label: '黃金', grp: '金屬' },
+  { k: 'copper', label: '銅', grp: '金屬' },
+  { k: 'wti', label: '原油', grp: '能源' },
+  { k: 'spx', label: '美股', grp: '股市' },
+  { k: 'sox', label: '費半', grp: '股市' },
+  { k: 'taiex', label: '台股', grp: '股市' },
+  { k: 'btc', label: '加密', grp: '加密' },
+  { k: 'dxy', label: '美元', grp: '匯率' },
+  { k: 'us10y', label: '美債', grp: '債券', bond: true },
+]
+
+function flowScore(m, n, bond) {
+  const h = m?.history
+  if (!h || h.length < 70) return null
+  const v = h.map((p) => p[1])
+  const daily = []
+  for (let i = v.length - 61; i < v.length; i++) {
+    if (i < 1) continue
+    daily.push(bond ? -(v[i] - v[i - 1]) * 100 : Math.log(v[i] / v[i - 1]) * 100)
+  }
+  const hist = daily.slice(0, -1)
+  const mu = hist.reduce((s, x) => s + x, 0) / hist.length
+  const sd = Math.sqrt(hist.reduce((s, x) => s + (x - mu) ** 2, 0) / hist.length)
+  const a = v[v.length - 1 - n], b = v[v.length - 1]
+  const raw = bond ? -(b - a) * 100 : (b / a - 1) * 100
+  const z = sd ? raw / (sd * Math.sqrt(n)) : 0
+  return { z: +z.toFixed(2), raw, from: h[h.length - 1 - n][0], to: h[h.length - 1][0] }
+}
+
+export function FlowChart({ metrics }) {
+  const [n, setN] = useState(1)
+  const [sorted, setSorted] = useState(false)
+  const data = useMemo(() => {
+    const rows = FLOW_ASSETS.map((a) => {
+      const s = flowScore(metrics?.[a.k], n, a.bond)
+      return s && { ...a, ...s }
+    }).filter(Boolean)
+    return sorted ? [...rows].sort((x, y) => y.z - x.z) : rows
+  }, [metrics, n, sorted])
+  const lim = Math.max(2, Math.ceil(Math.max(...data.map((d) => Math.abs(d.z)), 0)))
+  const inflow = data.filter((d) => d.z >= 0.5).map((d) => d.label)
+  const outflow = data.filter((d) => d.z <= -0.5).map((d) => d.label)
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+        <div className="text-[11px] text-muted">
+          {inflow.length ? <>流入：<span className="up">{inflow.join('、')}</span></> : '無明顯流入'}
+          <span className="mx-2">｜</span>
+          {outflow.length ? <>流出：<span className="down">{outflow.join('、')}</span></> : '無明顯流出'}
+        </div>
+        <div className="flex gap-1">
+          {[[1, '1D'], [5, '5D'], [20, '20D']].map(([v, l]) => (
+            <button key={v} onClick={() => setN(v)}
+              className={`text-[11px] px-2 py-0.5 rounded ${n === v ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>{l}</button>
+          ))}
+          <button onClick={() => setSorted((s) => !s)}
+            className={`text-[11px] px-2 py-0.5 rounded ${sorted ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>排序</button>
+        </div>
+      </div>
+      <div className="h-56">
+        <ResponsiveContainer>
+          <BarChart data={data} margin={{ top: 18, right: 8, left: -14, bottom: 0 }} barCategoryGap="22%">
+            {GRID}
+            <XAxis dataKey="label" {...AX} interval={0} tick={{ fill: '#c3c2b7', fontSize: 12 }} />
+            <YAxis {...AX} width={40} domain={[-lim, lim]} tickFormatter={(v) => `${v}σ`} />
+            <ReferenceLine y={0} stroke="#8d8c84" />
+            <ReferenceLine y={2} stroke="#4a4a45" strokeDasharray="4 3" />
+            <ReferenceLine y={-2} stroke="#4a4a45" strokeDasharray="4 3" />
+            <Tooltip {...TT} cursor={{ fill: '#2a2a27' }}
+              formatter={(v, _n, p) => [`${v > 0 ? '+' : ''}${v}σ（${p.payload.bond ? '殖利率 ' + (p.payload.raw > 0 ? '−' : '+') + Math.abs(p.payload.raw).toFixed(1) + 'bp' : (p.payload.raw > 0 ? '+' : '') + p.payload.raw.toFixed(2) + '%'}）`, `${p.payload.label}・${p.payload.from} → ${p.payload.to}`]}
+              labelFormatter={() => ''} />
+            <Bar isAnimationActive={false} dataKey="z" radius={[4, 4, 4, 4]}
+              label={{ position: 'top', fill: '#c3c2b7', fontSize: 11, formatter: (v) => `${v > 0 ? '+' : ''}${v}` }}>
+              {data.map((d) => <Cell key={d.k} fill={d.z >= 0 ? 'var(--up)' : 'var(--down)'} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <p className="text-[10px] text-muted leading-relaxed">
+        代理指標，非實際申贖資金：σ = N 日報酬 ÷ 該資產近 60 日波動，讓波動不同的資產可直接比較；|σ| ≥ 2（虛線）為異常強烈移動。
+        美債以價格方向呈現（殖利率下跌 = 流入）。各市場收盤日不同（加密含週末）。
+      </p>
+    </div>
+  )
+}
