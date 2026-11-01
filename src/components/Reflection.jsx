@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Panel } from './bits'
 import { loadEntries, upsertEntry, feedback, loadSync, syncGithub } from '../lib/journal'
+import { PredictionPicker } from './Prediction'
 
 export default function Reflection({ q, onSaved, className = '' }) {
   const [answers, setAnswers] = useState([])
+  const [preds, setPreds] = useState([])
   const [fb, setFb] = useState(null)
   const [sync, setSync] = useState('')
 
@@ -12,6 +14,7 @@ export default function Reflection({ q, onSaved, className = '' }) {
     const e = loadEntries()[q.date]
     const n = q.questions.length
     setAnswers(Array.from({ length: n }, (_, i) => e?.answers?.[i] || ''))
+    setPreds(Array.from({ length: n }, (_, i) => e?.predictions?.[i] || null))
     setFb(e?.answers ? { msgs: feedback(e.answers), saved: true } : null)
   }, [q])
 
@@ -20,7 +23,9 @@ export default function Reflection({ q, onSaved, className = '' }) {
   const submit = async () => {
     upsertEntry(q.date, {
       questions: q.questions.map((x) => x.text), hints: q.questions.map((x) => x.hint),
-      answers, snapshot: q.snapshot, events: q.events, engine: q.engine,
+      answers, predictions: preds, assets: q.questions.map((x) => x.assets || []),
+      types: q.questions.map((x) => x.type || 'market'),
+      snapshot: q.snapshot, events: q.events, engine: q.engine,
     })
     setFb({ msgs: feedback(answers), saved: true })
     onSaved?.()
@@ -50,6 +55,8 @@ export default function Reflection({ q, onSaved, className = '' }) {
               placeholder="你的推敲：因為…所以…；什麼情況代表我錯了？"
               className="mt-1 w-full bg-bg border border-line rounded-lg p-2 text-[13px] text-ink placeholder:text-muted focus:outline-none focus:border-s1"
             />
+            <PredictionPicker value={preds[i]} suggest={(x.assets || []).filter(Boolean)}
+              onChange={(v) => setPreds((a) => a.map((p, j) => (j === i ? v : p)))} />
             {fb && x.hint && <p className="text-[12px] text-ink2 mt-1 pl-2 border-l-2 border-s3">💡 {x.hint}</p>}
           </li>
         ))}
@@ -59,6 +66,7 @@ export default function Reflection({ q, onSaved, className = '' }) {
           {fb?.saved ? '更新紀錄' : '提交'}
         </button>
         <span className="text-[11px] text-muted">{sync}</span>
+        <a href="#/review" className="ml-auto text-[11px] text-s1">統整驗證 →</a>
       </div>
       {fb && (
         <div className="mt-2 p-2 rounded-lg bg-surface2 text-[12px] text-ink2 space-y-1">

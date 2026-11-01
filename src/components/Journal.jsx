@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { Panel } from './bits'
 import { getJSON, fmt } from '../lib/util'
 import { loadEntries, upsertEntry, exportJSON, importJSON, loadSync, saveSync, syncGithub } from '../lib/journal'
+import { PredictionPicker, OutcomeBadge, AfterMoves } from './Prediction'
+
+const GRADES = [['logic_ok', '✓ 邏輯正確'], ['timing', '◐ 方向對、時機錯'], ['logic_bad', '✗ 邏輯錯誤']]
 
 const SNAP_NAMES = { vix: 'VIX', dxy: 'DXY', us10y: 'US10Y', us02y: 'US02Y', spread: '10Y-2Y', hy: 'HY OAS',
   usdjpy: 'USD/JPY', usdtwd: 'USD/TWD', btc: 'BTC', taiex: 'TAIEX', spx: 'S&P500', sox: 'SOX', gold: '黃金', wti: 'WTI', copper: '銅' }
 
 const ymd = (d) => d.toISOString().slice(0, 10)
 
-export default function Journal({ index, initialDate }) {
+export default function Journal({ index, initialDate, metrics }) {
   const [entries, setEntries] = useState(loadEntries)
   const start = initialDate || index?.at(-1)?.d || null
   const [month, setMonth] = useState(() => (start || ymd(new Date())).slice(0, 7))
@@ -17,11 +20,14 @@ export default function Journal({ index, initialDate }) {
   const [mode, setMode] = useState('cal')
   const [search, setSearch] = useState('')
   const [edit, setEdit] = useState(null)
+  const [editPreds, setEditPreds] = useState([])
+  const [review, setReview] = useState('')
 
   const qmap = useMemo(() => new Map((index || []).map((x) => [x.d, x.ev])), [index])
 
   useEffect(() => {
     setEdit(null)
+    setReview(loadEntries()[sel]?.review || '')
     if (!sel || !qmap.has(sel)) { setQfile(null); return }
     getJSON(`data/questions/${sel}.json`).then(setQfile).catch(() => setQfile(null))
   }, [sel, qmap])
@@ -58,6 +64,7 @@ export default function Journal({ index, initialDate }) {
   const fileQs = qfile?.questions?.map((x) => x.text) || []
   const questions = fileQs.length > (e?.questions?.length || 0) ? fileQs : (e?.questions || fileQs)
   const qTypes = qfile?.questions?.map((x) => x.type) || []
+  const qAssets = (i) => e?.assets?.[i] || qfile?.questions?.[i]?.assets || []
   const snapshot = e?.snapshot || qfile?.snapshot
   const events = qmap.get(sel) || e?.events || []
 
@@ -157,6 +164,14 @@ export default function Journal({ index, initialDate }) {
             ) : (
               <p className="mt-1 text-[13px] text-ink2 whitespace-pre-wrap pl-2 border-l-2 border-line">{e?.answers?.[i] || '（未作答）'}</p>
             )}
+            {edit ? (
+              <PredictionPicker value={editPreds[i]} suggest={qAssets(i)}
+                onChange={(v) => setEditPreds((a) => a.map((p, j) => (j === i ? v : p)))} />
+            ) : e?.predictions?.[i]?.dir ? (
+              <OutcomeBadge metrics={metrics} pred={e.predictions[i]} date={sel} />
+            ) : (
+              <AfterMoves metrics={metrics} assets={qAssets(i)} date={sel} />
+            )}
           </div>
         ))}
         {questions.length > 0 && (
@@ -164,16 +179,38 @@ export default function Journal({ index, initialDate }) {
             {edit ? (
               <>
                 <button className="px-3 py-1 rounded bg-s1 text-white text-sm" onClick={() => {
-                  setEntries(upsertEntry(sel, { answers: edit, questions, snapshot, events,
+                  setEntries(upsertEntry(sel, { answers: edit, predictions: editPreds, questions, snapshot, events,
+                    assets: questions.map((_, j) => qAssets(j)),
+                    types: questions.map((_, j) => qTypes[j] || e?.types?.[j] || 'market'),
                     hints: e?.hints || qfile?.questions?.map((x) => x.hint) }))
                   setEdit(null)
                 }}>儲存</button>
                 <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => setEdit(null)}>取消</button>
               </>
             ) : (
-              <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => setEdit(Array.from({ length: questions.length }, (_, j) => e?.answers?.[j] || ''))}>
-                {e?.answers ? '編輯回答' : '補寫回答'}</button>
+              <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => {
+                setEdit(Array.from({ length: questions.length }, (_, j) => e?.answers?.[j] || ''))
+                setEditPreds(Array.from({ length: questions.length }, (_, j) => e?.predictions?.[j] || null))
+              }}>
+                {e?.answers ? '編輯回答 / 預判' : '補寫回答'}</button>
             )}
+          </div>
+        )}
+        {e?.answers && !edit && (
+          <div className="mt-4 pt-3 border-t border-line">
+            <div className="text-[11px] font-semibold text-s3 mb-1">▍事後檢討（對照上方實際走勢）</div>
+            <div className="flex flex-wrap gap-1 mb-1">
+              {GRADES.map(([k, l]) => (
+                <button key={k} onClick={() => setEntries(upsertEntry(sel, { grade: e.grade === k ? null : k }))}
+                  className={`text-[11px] px-2 py-0.5 rounded border ${e.grade === k ? 'bg-s3 border-s3 text-white' : 'border-line text-ink2'}`}>{l}</button>
+              ))}
+            </div>
+            <textarea value={review} onChange={(ev) => setReview(ev.target.value)} rows={2}
+              placeholder="回頭看：哪個假設對了、哪個錯了？下次遇到類似情況要先看什麼？"
+              className="w-full bg-bg border border-line rounded-lg p-2 text-[13px]" />
+            <button className="mt-1 px-3 py-1 rounded bg-surface2 text-sm"
+              onClick={() => setEntries(upsertEntry(sel, { review }))}>儲存檢討</button>
+            {e.review && e.review === review && <span className="text-[11px] text-good ml-2">已儲存</span>}
           </div>
         )}
         {qfile?.headlines?.length > 0 && (

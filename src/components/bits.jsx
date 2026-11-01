@@ -5,7 +5,7 @@ export function Panel({ title, right, children, className = '', style, id }) {
   return (
     <section id={id} style={style} className={`bg-surface rounded-xl border border-line p-3 ${className}`}>
       {(title || right) && (
-        <header className="flex items-center justify-between mb-2 gap-2">
+        <header className="flex items-center justify-between mb-2 gap-2 flex-wrap">
           <h2 className="text-[13px] font-semibold tracking-wide text-ink2">{title}</h2>
           {right}
         </header>
