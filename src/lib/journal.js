@@ -6,6 +6,25 @@
  */
 const KEY = 'mdj.entries.v1'
 const SKEY = 'mdj.sync.v1'
+const DKEY = 'mdj.drafts.v1'
+
+/** 草稿：作答中自動保存（按提交前也不會遺失）；key 例：'2026-10-30' 或 'edit:2026-10-30' */
+function loadDrafts() { try { return JSON.parse(localStorage.getItem(DKEY) || '{}') } catch { return {} } }
+export function loadDraft(key) { return loadDrafts()[key] || null }
+export function saveDraft(key, data) {
+  try {
+    const all = loadDrafts()
+    all[key] = { ...data, saved_at: new Date().toISOString() }
+    // 只保留最近 30 份草稿，避免無限增長
+    const keys = Object.keys(all).sort((a, b) => (all[b].saved_at > all[a].saved_at ? 1 : -1))
+    keys.slice(30).forEach((k) => delete all[k])
+    localStorage.setItem(DKEY, JSON.stringify(all))
+    return all[key].saved_at
+  } catch { return null }
+}
+export function clearDraft(key) {
+  try { const all = loadDrafts(); delete all[key]; localStorage.setItem(DKEY, JSON.stringify(all)) } catch { /* ignore */ }
+}
 
 export function loadEntries() {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}') } catch { return {} }

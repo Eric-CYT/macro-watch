@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Panel } from './bits'
 import { getJSON, fmt } from '../lib/util'
-import { loadEntries, upsertEntry, exportJSON, importJSON, loadSync, saveSync, syncGithub } from '../lib/journal'
+import { loadEntries, upsertEntry, exportJSON, importJSON, loadSync, saveSync, syncGithub, loadDraft, saveDraft, clearDraft } from '../lib/journal'
 import { PredictionPicker, OutcomeBadge, AfterMoves } from './Prediction'
 
 const GRADES = [['logic_ok', '✓ 邏輯正確'], ['timing', '◐ 方向對、時機錯'], ['logic_bad', '✗ 邏輯錯誤']]
@@ -25,12 +25,29 @@ export default function Journal({ index, initialDate, metrics }) {
 
   const qmap = useMemo(() => new Map((index || []).map((x) => [x.d, x.ev])), [index])
 
+  const hasQ = !!sel && qmap.has(sel)
+  // 只在切換日期時重設（每 5 分鐘的資料刷新不會清掉編輯中的內容）
   useEffect(() => {
-    setEdit(null)
-    setReview(loadEntries()[sel]?.review || '')
-    if (!sel || !qmap.has(sel)) { setQfile(null); return }
+    const d = sel ? loadDraft(`edit:${sel}`) : null
+    if (d) { setEdit(d.answers); setEditPreds(d.predictions || []) } else setEdit(null)
+    setReview(loadDraft(`review:${sel}`)?.review ?? (loadEntries()[sel]?.review || ''))
+  }, [sel])
+  useEffect(() => {
+    if (!hasQ) { setQfile(null); return }
     getJSON(`data/questions/${sel}.json`).then(setQfile).catch(() => setQfile(null))
-  }, [sel, qmap])
+  }, [sel, hasQ])
+  // 編輯中、檢討中自動存草稿
+  useEffect(() => {
+    if (!sel || !edit) return
+    const t = setTimeout(() => saveDraft(`edit:${sel}`, { answers: edit, predictions: editPreds }), 600)
+    return () => clearTimeout(t)
+  }, [sel, edit, editPreds])
+  useEffect(() => {
+    if (!sel) return
+    const saved = loadEntries()[sel]?.review || ''
+    const t = setTimeout(() => (review !== saved ? saveDraft(`review:${sel}`, { review }) : clearDraft(`review:${sel}`)), 600)
+    return () => clearTimeout(t)
+  }, [sel, review])
 
   const days = useMemo(() => {
     const [y, m] = month.split('-').map(Number)
@@ -183,9 +200,11 @@ export default function Journal({ index, initialDate, metrics }) {
                     assets: questions.map((_, j) => qAssets(j)),
                     types: questions.map((_, j) => qTypes[j] || e?.types?.[j] || 'market'),
                     hints: e?.hints || qfile?.questions?.map((x) => x.hint) }))
+                  clearDraft(`edit:${sel}`)
                   setEdit(null)
                 }}>儲存</button>
-                <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => setEdit(null)}>取消</button>
+                <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => { clearDraft(`edit:${sel}`); setEdit(null) }}>取消</button>
+                <span className="text-[11px] text-warning self-center">● 編輯內容會自動暫存，按「儲存」才正式寫入</span>
               </>
             ) : (
               <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => {
@@ -209,7 +228,7 @@ export default function Journal({ index, initialDate, metrics }) {
               placeholder="回頭看：哪個假設對了、哪個錯了？下次遇到類似情況要先看什麼？"
               className="w-full bg-bg border border-line rounded-lg p-2 text-[13px]" />
             <button className="mt-1 px-3 py-1 rounded bg-surface2 text-sm"
-              onClick={() => setEntries(upsertEntry(sel, { review }))}>儲存檢討</button>
+              onClick={() => { setEntries(upsertEntry(sel, { review })); clearDraft(`review:${sel}`) }}>儲存檢討</button>
             {e.review && e.review === review && <span className="text-[11px] text-good ml-2">已儲存</span>}
           </div>
         )}
