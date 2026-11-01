@@ -54,7 +54,10 @@ export default function Journal({ index, initialDate }) {
   }, [entries, qmap, mode, search])
 
   const e = sel ? entries[sel] : null
-  const questions = e?.questions || qfile?.questions?.map((x) => x.text) || []
+  // 若當天題目檔後來補上了資金流向題，以題目檔為準（回答依序對應，不會遺失）
+  const fileQs = qfile?.questions?.map((x) => x.text) || []
+  const questions = fileQs.length > (e?.questions?.length || 0) ? fileQs : (e?.questions || fileQs)
+  const qTypes = qfile?.questions?.map((x) => x.type) || []
   const snapshot = e?.snapshot || qfile?.snapshot
   const events = qmap.get(sel) || e?.events || []
 
@@ -144,7 +147,10 @@ export default function Journal({ index, initialDate }) {
         )}
         {questions.map((qt, i) => (
           <div key={i} className="mb-3">
-            <p className="text-[13px] text-ink"><span className="text-s1 font-semibold mr-1">Q{i + 1}</span>{qt}</p>
+            {qTypes[i] === 'flow' && qTypes[i - 1] !== 'flow' && (
+              <div className="text-[11px] font-semibold text-s2 mt-4 pt-3 border-t border-line mb-1">▍資金流向推敲</div>
+            )}
+            <p className="text-[13px] text-ink"><span className={`font-semibold mr-1 ${qTypes[i] === 'flow' ? 'text-s2' : 'text-s1'}`}>Q{i + 1}</span>{qt}</p>
             {edit ? (
               <textarea value={edit[i] || ''} rows={3} onChange={(ev) => setEdit((a) => a.map((v, j) => (j === i ? ev.target.value : v)))}
                 className="mt-1 w-full bg-bg border border-line rounded-lg p-2 text-[13px]" />
@@ -165,7 +171,7 @@ export default function Journal({ index, initialDate }) {
                 <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => setEdit(null)}>取消</button>
               </>
             ) : (
-              <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => setEdit(e?.answers || ['', '', ''])}>
+              <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => setEdit(Array.from({ length: questions.length }, (_, j) => e?.answers?.[j] || ''))}>
                 {e?.answers ? '編輯回答' : '補寫回答'}</button>
             )}
           </div>

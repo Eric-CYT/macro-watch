@@ -83,12 +83,17 @@ export function feedback(answers) {
   const causal = filled.filter((a) => /因為|所以|導致|如果|若|代表|意味|because|if|so\b/i.test(a)).length
   const falsifiable = filled.filter((a) => /跌破|突破|假如|驗證|失效|停損|觀察|明天|下週|\d/.test(a)).length
   const msgs = []
-  if (filled.length === 3) msgs.push('三題都完成了，保持每日紀錄就是你最大的 Alpha 來源。')
-  else msgs.push(`完成 ${filled.length}/3 題。就算只寫一句直覺，也比沒有紀錄好。`)
+  const total = answers.length
+  if (filled.length === total) msgs.push(`${total} 題都完成了，保持每日紀錄就是你最大的 Alpha 來源。`)
+  else msgs.push(`完成 ${filled.length}/${total} 題。就算只寫一句直覺，也比沒有紀錄好。`)
   if (causal >= 2) msgs.push('你的回答有清楚的因果鏈，這讓日後回溯時能判斷是「邏輯錯」還是「時機錯」。')
   else msgs.push('建議：試著用「因為 A → 所以 B」寫出因果鏈，回顧時才知道錯在哪一環。')
   if (falsifiable >= 1) msgs.push('很好，你留下了可驗證的條件（價位/時間），記得之後回來對答案。')
   else msgs.push('建議：加上一個「什麼情況代表我錯了」的條件，例如某價位或某數據。')
   if (len > 600) msgs.push('篇幅很充實；挑出最關鍵的一句加粗在心裡，那就是今天的結論。')
+  const flowAns = answers.slice(3).filter((a) => a && a.trim())
+  if (total > 3 && flowAns.length && !flowAns.some((a) => /利率|美元|殖利率|流動性|避險|外資|央行|Fed|聯準會|通膨|匯/.test(a))) {
+    msgs.push('資金流向題建議：把「誰流出、誰流入」連到一個驅動因子（利率、美元、流動性、避險需求），推論才站得住。')
+  }
   return msgs
 }

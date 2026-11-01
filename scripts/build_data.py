@@ -433,6 +433,18 @@ def main():
         close_utc = datetime.fromisoformat(qdate).replace(tzinfo=timezone.utc) + timedelta(hours=21, minutes=15)
         qfile = qdir / f"{qdate}.json"
         force = os.environ.get("FORCE_QUESTIONS") == "1"
+        # 舊版只有 3 題的檔案：補上資金流向題（保留原本 3 題，已寫的回答不受影響）
+        if qfile.exists() and not force:
+            try:
+                old_q = json.loads(qfile.read_text(encoding="utf-8"))
+                if len(old_q.get("questions", [])) == 3:
+                    fq, ft = q_mod.flow_questions(M)
+                    old_q["questions"] += fq
+                    old_q["flows"] = ft
+                    qfile.write_text(json.dumps(old_q, ensure_ascii=False, indent=1), encoding="utf-8")
+                    generated = f"{qdate}（補上資金流向題）"
+            except Exception as e:  # noqa: BLE001
+                ERRORS.append(f"補資金流向題: {e}")
         if (now >= close_utc and not qfile.exists()) or force:
             qs, mv, engine = q_mod.generate(M, news["items"], events_on(qdate))
             snap = {k: {"v": M[k].get("last"), "chg_1d": M[k].get("chg_1d"), "rate": M[k]["rate"]}
@@ -440,6 +452,7 @@ def main():
                               "spx", "sox", "gold", "wti", "copper") if k in M and M[k].get("last") is not None}
             payload = {"date": qdate, "generated_at": now.isoformat(timespec="seconds"), "engine": engine,
                        "events": events_on(qdate), "snapshot": snap, "moves": mv, "questions": qs,
+                       "flows": q_mod.flow_table(M),
                        "headlines": [{"title": n["title"], "url": n["url"], "tags": n["tags"]} for n in news["items"][:8]]}
             qfile.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
             generated = qdate

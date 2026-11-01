@@ -174,7 +174,8 @@ def test_full_pipeline(sample_out=None):
             assert m["macro"][k]["series"], k
         qi = json.loads((out / "questions" / "index.json").read_text())
         q = json.loads((out / "questions" / f"{qi[-1]['d']}.json").read_text())
-        assert len(q["questions"]) == 3 and all(x["text"] for x in q["questions"])
+        assert len(q["questions"]) == 6 and all(x["text"] for x in q["questions"]), len(q["questions"])
+        assert sum(1 for x in q["questions"] if x["type"] == "flow") == 3
         if sample_out:
             m["SAMPLE"] = True
             (out / "market.json").write_text(json.dumps(m, ensure_ascii=False))

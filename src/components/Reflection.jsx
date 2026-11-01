@@ -3,18 +3,19 @@ import { Panel } from './bits'
 import { loadEntries, upsertEntry, feedback, loadSync, syncGithub } from '../lib/journal'
 
 export default function Reflection({ q, onSaved, className = '' }) {
-  const [answers, setAnswers] = useState(['', '', ''])
+  const [answers, setAnswers] = useState([])
   const [fb, setFb] = useState(null)
   const [sync, setSync] = useState('')
 
   useEffect(() => {
     if (!q) return
     const e = loadEntries()[q.date]
-    setAnswers(e?.answers || ['', '', ''])
+    const n = q.questions.length
+    setAnswers(Array.from({ length: n }, (_, i) => e?.answers?.[i] || ''))
     setFb(e?.answers ? { msgs: feedback(e.answers), saved: true } : null)
   }, [q])
 
-  if (!q) return <Panel title="今日推敲 3 問" className={className}><div className="text-muted text-sm">尚未產生（每個美股交易日收盤後約 05:30 台北時間產生）</div></Panel>
+  if (!q) return <Panel title="今日推敲" className={className}><div className="text-muted text-sm">尚未產生（每個美股交易日收盤後約 05:30 台北時間產生）</div></Panel>
 
   const submit = async () => {
     upsertEntry(q.date, {
@@ -31,12 +32,17 @@ export default function Reflection({ q, onSaved, className = '' }) {
   }
 
   return (
-    <Panel className={className} title={<>今日推敲 3 問 <span className="text-muted font-normal">· {q.date}{q.events?.length ? ` · ${q.events.join('/')}` : ''}</span></>}
+    <Panel className={className} title={<>今日推敲 {q.questions.length} 問 <span className="text-muted font-normal">· {q.date}{q.events?.length ? ` · ${q.events.join('/')}` : ''}</span></>}
       right={<span className="text-[10px] text-muted">{q.engine === 'llm' ? 'LLM 生成' : '規則生成'}</span>}>
       <ol className="space-y-3">
         {q.questions.map((x, i) => (
           <li key={i}>
-            <p className="text-[13px] leading-relaxed text-ink"><span className="text-s1 font-semibold mr-1">Q{i + 1}</span>{x.text}</p>
+            {(i === 0 || (x.type === 'flow') !== (q.questions[i - 1].type === 'flow')) && (
+              <div className={`text-[11px] font-semibold tracking-wide mb-1 ${i ? 'mt-4 pt-3 border-t border-line' : ''} ${x.type === 'flow' ? 'text-s2' : 'text-s1'}`}>
+                {x.type === 'flow' ? '▍資金流向推敲（對照上方資金流向圖）' : '▍市場推敲'}
+              </div>
+            )}
+            <p className="text-[13px] leading-relaxed text-ink"><span className={`font-semibold mr-1 ${x.type === 'flow' ? 'text-s2' : 'text-s1'}`}>Q{i + 1}</span>{x.text}</p>
             <textarea
               value={answers[i] || ''}
               onChange={(e) => setAnswers((a) => a.map((v, j) => (j === i ? e.target.value : v)))}
