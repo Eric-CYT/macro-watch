@@ -18,7 +18,7 @@ export default function Review({ metrics, index }) {
     return Object.fromEntries(Object.entries(all).filter(([d]) => d >= cut))
   }, [all, days])
   const rows = useMemo(() => flatten(entries, metrics, index), [entries, metrics, index])
-  const st = useMemo(() => stats(rows, entries), [rows, entries])
+  const st = useMemo(() => stats(rows, entries, metrics), [rows, entries, metrics])
   const summary = useMemo(() => summaryText(st, label), [st, label])
 
   const copyAI = async () => {
@@ -68,6 +68,8 @@ export default function Review({ metrics, index }) {
         <Group title="按信心（校準）" data={st.byConf} note="理想狀態：信心越高，命中率越高" />
         <Group title="事件日 vs 一般日" data={st.byEvent} note="事件日 = CPI / NFP / ISM / FOMC" />
         <Group title="按方向" data={st.byDir} note="檢查是否有偏多或偏空的慣性" />
+        <Group title={`每日總結驗證（5 日）・已寫 ${st.summaries} 天`} data={st.sumCalls.by}
+          note={`整體方向以美股驗證；看好／看壞以各資產驗證。${st.sumCalls.pending ? `另有 ${st.sumCalls.pending} 個未到期。` : ''}`} />
       </div>
 
       <div className="grid gap-3 xl:grid-cols-3">

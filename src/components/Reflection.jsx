@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { Panel } from './bits'
 import { loadEntries, upsertEntry, feedback, loadSync, syncGithub, loadDraft, saveDraft, clearDraft } from '../lib/journal'
 import { PredictionPicker } from './Prediction'
+import { SummaryBox, emptySummary, summaryFilled } from './Summary'
+import { groupOf, typeOf } from '../lib/groups'
 
 export default function Reflection({ q, onSaved, className = '' }) {
   const [answers, setAnswers] = useState([])
   const [preds, setPreds] = useState([])
+  const [summary, setSummary] = useState(emptySummary)
   const [fb, setFb] = useState(null)
   const [sync, setSync] = useState('')
 
@@ -25,35 +28,36 @@ export default function Reflection({ q, onSaved, className = '' }) {
     const src = useDraft ? d : e
     setAnswers(Array.from({ length: n }, (_, i) => src?.answers?.[i] || ''))
     setPreds(Array.from({ length: n }, (_, i) => src?.predictions?.[i] || null))
+    setSummary({ ...emptySummary(), ...(src?.summary || {}) })
     setDraftAt(useDraft ? d.saved_at : null)
-    setFb(e?.answers && !useDraft ? { msgs: feedback(e.answers), saved: true } : null)
+    setFb(e?.answers && !useDraft ? { msgs: feedback(e.answers, e.summary), saved: true } : null)
   }, [qKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 自動儲存草稿（停止輸入 0.6 秒後）
   const dirty = useRef(false)
   useEffect(() => {
     if (!q || !dirty.current) return
-    const t = setTimeout(() => setDraftAt(saveDraft(q.date, { answers, predictions: preds })), 600)
+    const t = setTimeout(() => setDraftAt(saveDraft(q.date, { answers, predictions: preds, summary })), 600)
     return () => clearTimeout(t)
-  }, [answers, preds]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [answers, preds, summary]) // eslint-disable-line react-hooks/exhaustive-deps
   // 關閉/切換頁面時立即存
   useEffect(() => {
-    const f = () => { if (q && dirty.current) saveDraft(q.date, { answers, predictions: preds }) }
+    const f = () => { if (q && dirty.current) saveDraft(q.date, { answers, predictions: preds, summary }) }
     addEventListener('pagehide', f)
     document.addEventListener('visibilitychange', f)
     return () => { removeEventListener('pagehide', f); document.removeEventListener('visibilitychange', f) }
-  }, [q, answers, preds])
+  }, [q, answers, preds, summary])
 
   if (!q) return <Panel title="今日推敲" className={className}><div className="text-muted text-sm">尚未產生（每個美股交易日收盤後約 05:30 台北時間產生）</div></Panel>
 
   const submit = async () => {
     upsertEntry(q.date, {
       questions: q.questions.map((x) => x.text), hints: q.questions.map((x) => x.hint),
-      answers, predictions: preds, assets: q.questions.map((x) => x.assets || []),
-      types: q.questions.map((x) => x.type || 'market'),
+      answers, predictions: preds, summary, assets: q.questions.map((x) => x.assets || []),
+      types: q.questions.map((x, i) => typeOf(x.type, i)),
       snapshot: q.snapshot, events: q.events, engine: q.engine,
     })
-    setFb({ msgs: feedback(answers), saved: true })
+    setFb({ msgs: feedback(answers, summary), saved: true })
     clearDraft(q.date)
     dirty.current = false
     setDraftAt(null)
@@ -71,12 +75,12 @@ export default function Reflection({ q, onSaved, className = '' }) {
       <ol className="space-y-3">
         {q.questions.map((x, i) => (
           <li key={i}>
-            {(i === 0 || (x.type === 'flow') !== (q.questions[i - 1].type === 'flow')) && (
-              <div className={`text-[11px] font-semibold tracking-wide mb-1 ${i ? 'mt-4 pt-3 border-t border-line' : ''} ${x.type === 'flow' ? 'text-s2' : 'text-s1'}`}>
-                {x.type === 'flow' ? '▍資金流向推敲（對照上方資金流向圖）' : '▍市場推敲'}
+            {(i === 0 || typeOf(x.type, i) !== typeOf(q.questions[i - 1].type, i - 1)) && (
+              <div className={`text-[11px] font-semibold tracking-wide mb-1 ${i ? 'mt-4 pt-3 border-t border-line' : ''} ${groupOf(x.type, i).cls}`}>
+                {groupOf(x.type, i).label}
               </div>
             )}
-            <p className="text-[13px] leading-relaxed text-ink"><span className={`font-semibold mr-1 ${x.type === 'flow' ? 'text-s2' : 'text-s1'}`}>Q{i + 1}</span>{x.text}</p>
+            <p className="text-[13px] leading-relaxed text-ink"><span className={`font-semibold mr-1 ${groupOf(x.type, i).cls}`}>Q{i + 1}</span>{x.text}</p>
             <textarea
               value={answers[i] || ''}
               onChange={(e) => { dirty.current = true; setAnswers((a) => a.map((v, j) => (j === i ? e.target.value : v))) }}
@@ -90,7 +94,11 @@ export default function Reflection({ q, onSaved, className = '' }) {
           </li>
         ))}
       </ol>
-      <div className="flex items-center gap-2 mt-2">
+      <div className="mt-4 pt-3 border-t border-line">
+        <div className="text-[11px] font-semibold tracking-wide mb-1 text-warning">▍總結：接下來的策略與市場方向</div>
+        <SummaryBox value={summary} onChange={(v) => { dirty.current = true; setSummary(v) }} />
+      </div>
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
         <button onClick={submit} className="px-3 py-1.5 rounded-lg bg-s1 text-white text-sm font-medium hover:brightness-110">
           {fb?.saved ? '更新紀錄' : '提交'}
         </button>

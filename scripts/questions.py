@@ -166,7 +166,7 @@ def llm_questions(base_qs, mv, news_items, events):
     }
     prompt = (
         "你是資深總經交易員教練。根據以下『已驗證的事實』（不可捏造任何數字），"
-        f"用繁體中文產出 {len(base_qs)} 個推敲型問題（後 3 題須圍繞跨資產資金流向），"
+        f"用繁體中文產出 {len(base_qs)} 個推敲型問題（第 4–6 題圍繞跨資產資金流向，第 7–9 題依序針對美元、黃金、加密），"
         "每題附一句重點提示。只輸出 JSON：[{\"text\":...,\"hint\":...}]。\n" + json.dumps(facts, ensure_ascii=False)
     )
     try:
@@ -190,7 +190,8 @@ def llm_questions(base_qs, mv, news_items, events):
 def generate(metrics, news_items, events):
     qs, mv = rule_questions(metrics, news_items, events)
     fq, _ = flow_questions(metrics)
-    base = qs + fq
+    aq = asset_questions(metrics, news_items)
+    base = qs + fq + aq
     llm = llm_questions(base, mv, news_items, events)
     return (llm or base), mv, ("llm" if llm else "rules")
 
@@ -313,3 +314,101 @@ def flow_questions(metrics):
                    "hint": "若兩端屬於同一主題的正反面（例如利率上升：美元流入、費半流出），這個主題就是目前市場的主軸。",
                    "assets": [], "type": "flow"})
     return qs[:3], T
+
+
+# ====================================================================== 美元／黃金／加密 專題（第 7–9 題）
+def _chg(m, n, rate=False):
+    h = (m or {}).get("history") or []
+    if len(h) <= n:
+        return None
+    a, b = h[-1 - n][1], h[-1][1]
+    return (b - a) * 100 if rate else (b / a - 1) * 100
+
+
+def _corr(ma, mb, n=20):
+    """近 n 日日報酬相關係數（以日期對齊）"""
+    import math
+    ha = dict((ma or {}).get("history") or [])
+    hb = dict((mb or {}).get("history") or [])
+    ds = sorted(set(ha) & set(hb))[-(n + 1):]
+    if len(ds) < n // 2:
+        return None
+    ra = [math.log(ha[y] / ha[x]) for x, y in zip(ds, ds[1:])]
+    rb = [math.log(hb[y] / hb[x]) for x, y in zip(ds, ds[1:])]
+    ma_, mb_ = sum(ra) / len(ra), sum(rb) / len(rb)
+    num = sum((x - ma_) * (y - mb_) for x, y in zip(ra, rb))
+    den = (sum((x - ma_) ** 2 for x in ra) * sum((y - mb_) ** 2 for y in rb)) ** 0.5
+    return num / den if den else None
+
+
+def _p(x, unit="%"):
+    return "—" if x is None else (f"{x:+.1f}bp" if unit == "bp" else f"{x:+.2f}%")
+
+
+def asset_questions(metrics, news_items=None):
+    M = metrics
+    qs = []
+
+    # ---------- 美元
+    d1, d5, d20 = (_chg(M.get("dxy"), n) for n in (1, 5, 20))
+    y5 = _chg(M.get("us02y"), 5, rate=True)
+    j5 = _chg(M.get("usdjpy"), 5)
+    t5 = _chg(M.get("usdtwd"), 5)
+    if d20 is not None:
+        if y5 is not None and d5 is not None and y5 > 5 and d5 < 0:
+            angle = (f"美債 2Y 5 日上升 {y5:.0f}bp，美元卻走弱（DXY 5 日 {_p(d5)}）——利差擴大但美元不漲，"
+                     "這是市場在擔心美國財政/政策信譽，還是其他央行更鷹？")
+        elif y5 is not None and d5 is not None and y5 < -5 and d5 > 0:
+            angle = (f"美債 2Y 5 日下降 {abs(y5):.0f}bp，美元反而走強（DXY 5 日 {_p(d5)}）——"
+                     "利差收斂下的美元強勢，通常是避險需求。你同意嗎？")
+        else:
+            angle = f"美元的走勢和美債 2Y（5 日 {_p(y5, 'bp')}）是否一致？利差是不是目前美元的主要驅動？"
+        qs.append({
+            "text": f"【美元】DXY 1 日 {_p(d1)}、5 日 {_p(d5)}、20 日 {_p(d20)}；同期 USD/JPY 5 日 {_p(j5)}、USD/TWD 5 日 {_p(t5)}。{angle}"
+                    f"接下來美元的方向，對台股與加密資產意味著什麼？",
+            "hint": "DXY 有 57.6% 是歐元：先確認是「美元強」還是「歐元弱」。再看日圓與新台幣是否同向，判斷是全面性美元行情還是區域性因素。",
+            "assets": ["dxy", "usdtwd"], "type": "asset", "topic": "美元",
+        })
+
+    # ---------- 黃金
+    g1, g5, g20 = (_chg(M.get("gold"), n) for n in (1, 5, 20))
+    r5 = _chg(M.get("us10y"), 5, rate=True)
+    if g20 is not None:
+        if r5 is not None and g5 is not None and r5 < -3 and g5 < 0:
+            angle = (f"殖利率下降（10Y 5 日 {r5:.0f}bp）照理有利黃金，黃金卻下跌——"
+                     "這是獲利了結、保證金追繳下的變現，還是央行買盤放緩？")
+        elif r5 is not None and g5 is not None and r5 > 3 and g5 > 0:
+            angle = (f"殖利率上升（10Y 5 日 +{r5:.0f}bp）黃金仍上漲——"
+                     "傳統「實質利率」框架失效時，通常是避險或央行/去美元化買盤在主導。你看到哪個證據？")
+        else:
+            angle = f"黃金與美債 10Y（5 日 {_p(r5, 'bp')}）、美元（5 日 {_p(d5)}）的關係是否符合「利率↓、美元↓ → 黃金↑」的教科書邏輯？"
+        qs.append({
+            "text": f"【黃金】黃金 1 日 {_p(g1)}、5 日 {_p(g5)}、20 日 {_p(g20)}。{angle}你認為黃金目前扮演的是避險資產、通膨對沖，還是投機標的？",
+            "hint": "黃金同時受實質利率、美元、避險需求與央行買盤影響；四者只要有一個主導，就會讓其他關係暫時失效。",
+            "assets": ["gold", "us10y"], "type": "asset", "topic": "黃金",
+        })
+
+    # ---------- 加密
+    b1, b5, b20 = (_chg(M.get("btc"), n) for n in (1, 5, 20))
+    c_spx = _corr(M.get("btc"), M.get("spx"))
+    c_dxy = _corr(M.get("btc"), M.get("dxy"))
+    if b20 is not None:
+        corr_txt = []
+        if c_spx is not None:
+            corr_txt.append(f"與美股 20 日相關係數 {c_spx:+.2f}")
+        if c_dxy is not None:
+            corr_txt.append(f"與美元 {c_dxy:+.2f}")
+        rel = "、".join(corr_txt)
+        if c_spx is not None and c_spx > 0.5:
+            angle = "加密目前和美股高度連動，基本上被當成高 Beta 科技資產交易。你認為這種連動會在什麼情況下脫鉤？"
+        elif c_spx is not None and c_spx < 0.1:
+            angle = "加密目前和美股幾乎不連動，走出獨立行情。驅動它的是什麼——ETF 資金、監管、鏈上事件，還是槓桿清算？"
+        else:
+            angle = "加密與美股的連動屬於中等。你覺得現在影響加密價格最大的是宏觀流動性，還是幣圈內部因素？"
+        n_news = sum(1 for n in (news_items or [])[:60] if "加密" in n.get("tags", []))
+        qs.append({
+            "text": f"【加密】BTC 1 日 {_p(b1)}、5 日 {_p(b5)}、20 日 {_p(b20)}（{rel}；今日加密相關新聞 {n_news} 則）。{angle}",
+            "hint": "觀察 BTC 對「美元流動性」（DXY、美債 2Y）與「風險偏好」（美股、VIX）的敏感度何者較高；週末的走勢常反映幣圈內部資金。",
+            "assets": ["btc", "dxy"], "type": "asset", "topic": "加密",
+        })
+    return qs

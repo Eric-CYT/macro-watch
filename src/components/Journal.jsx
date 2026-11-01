@@ -3,6 +3,8 @@ import { Panel } from './bits'
 import { getJSON, fmt } from '../lib/util'
 import { loadEntries, upsertEntry, exportJSON, importJSON, loadSync, saveSync, syncGithub, loadDraft, saveDraft, clearDraft } from '../lib/journal'
 import { PredictionPicker, OutcomeBadge, AfterMoves } from './Prediction'
+import { SummaryBox, emptySummary } from './Summary'
+import { groupOf, typeOf } from '../lib/groups'
 
 const GRADES = [['logic_ok', '✓ 邏輯正確'], ['timing', '◐ 方向對、時機錯'], ['logic_bad', '✗ 邏輯錯誤']]
 
@@ -21,6 +23,7 @@ export default function Journal({ index, initialDate, metrics }) {
   const [search, setSearch] = useState('')
   const [edit, setEdit] = useState(null)
   const [editPreds, setEditPreds] = useState([])
+  const [editSummary, setEditSummary] = useState(emptySummary)
   const [review, setReview] = useState('')
 
   const qmap = useMemo(() => new Map((index || []).map((x) => [x.d, x.ev])), [index])
@@ -29,7 +32,7 @@ export default function Journal({ index, initialDate, metrics }) {
   // 只在切換日期時重設（每 5 分鐘的資料刷新不會清掉編輯中的內容）
   useEffect(() => {
     const d = sel ? loadDraft(`edit:${sel}`) : null
-    if (d) { setEdit(d.answers); setEditPreds(d.predictions || []) } else setEdit(null)
+    if (d) { setEdit(d.answers); setEditPreds(d.predictions || []); setEditSummary({ ...emptySummary(), ...(d.summary || {}) }) } else setEdit(null)
     setReview(loadDraft(`review:${sel}`)?.review ?? (loadEntries()[sel]?.review || ''))
   }, [sel])
   useEffect(() => {
@@ -39,9 +42,9 @@ export default function Journal({ index, initialDate, metrics }) {
   // 編輯中、檢討中自動存草稿
   useEffect(() => {
     if (!sel || !edit) return
-    const t = setTimeout(() => saveDraft(`edit:${sel}`, { answers: edit, predictions: editPreds }), 600)
+    const t = setTimeout(() => saveDraft(`edit:${sel}`, { answers: edit, predictions: editPreds, summary: editSummary }), 600)
     return () => clearTimeout(t)
-  }, [sel, edit, editPreds])
+  }, [sel, edit, editPreds, editSummary])
   useEffect(() => {
     if (!sel) return
     const saved = loadEntries()[sel]?.review || ''
@@ -171,10 +174,11 @@ export default function Journal({ index, initialDate, metrics }) {
         )}
         {questions.map((qt, i) => (
           <div key={i} className="mb-3">
-            {qTypes[i] === 'flow' && qTypes[i - 1] !== 'flow' && (
-              <div className="text-[11px] font-semibold text-s2 mt-4 pt-3 border-t border-line mb-1">▍資金流向推敲</div>
+            {(i === 0 || typeOf(qTypes[i] || e?.types?.[i], i) !== typeOf(qTypes[i - 1] || e?.types?.[i - 1], i - 1)) && (
+              <div className={`text-[11px] font-semibold mb-1 ${i ? 'mt-4 pt-3 border-t border-line' : ''} ${groupOf(qTypes[i] || e?.types?.[i], i).cls}`}>
+                {groupOf(qTypes[i] || e?.types?.[i], i).label}</div>
             )}
-            <p className="text-[13px] text-ink"><span className={`font-semibold mr-1 ${qTypes[i] === 'flow' ? 'text-s2' : 'text-s1'}`}>Q{i + 1}</span>{qt}</p>
+            <p className="text-[13px] text-ink"><span className={`font-semibold mr-1 ${groupOf(qTypes[i] || e?.types?.[i], i).cls}`}>Q{i + 1}</span>{qt}</p>
             {edit ? (
               <textarea value={edit[i] || ''} rows={3} onChange={(ev) => setEdit((a) => a.map((v, j) => (j === i ? ev.target.value : v)))}
                 className="mt-1 w-full bg-bg border border-line rounded-lg p-2 text-[13px]" />
@@ -191,14 +195,21 @@ export default function Journal({ index, initialDate, metrics }) {
             )}
           </div>
         ))}
+        {questions.length > 0 && (edit || e?.summary) && (
+          <div className="mt-4 pt-3 border-t border-line mb-3">
+            <div className="text-[11px] font-semibold mb-1 text-warning">▍總結：接下來的策略與市場方向</div>
+            {edit ? <SummaryBox value={editSummary} onChange={setEditSummary} />
+              : <SummaryBox value={e.summary} readOnly metrics={metrics} date={sel} />}
+          </div>
+        )}
         {questions.length > 0 && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {edit ? (
               <>
                 <button className="px-3 py-1 rounded bg-s1 text-white text-sm" onClick={() => {
-                  setEntries(upsertEntry(sel, { answers: edit, predictions: editPreds, questions, snapshot, events,
+                  setEntries(upsertEntry(sel, { answers: edit, predictions: editPreds, summary: editSummary, questions, snapshot, events,
                     assets: questions.map((_, j) => qAssets(j)),
-                    types: questions.map((_, j) => qTypes[j] || e?.types?.[j] || 'market'),
+                    types: questions.map((_, j) => typeOf(qTypes[j] || e?.types?.[j], j)),
                     hints: e?.hints || qfile?.questions?.map((x) => x.hint) }))
                   clearDraft(`edit:${sel}`)
                   setEdit(null)
@@ -210,8 +221,9 @@ export default function Journal({ index, initialDate, metrics }) {
               <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => {
                 setEdit(Array.from({ length: questions.length }, (_, j) => e?.answers?.[j] || ''))
                 setEditPreds(Array.from({ length: questions.length }, (_, j) => e?.predictions?.[j] || null))
+                setEditSummary({ ...emptySummary(), ...(e?.summary || {}) })
               }}>
-                {e?.answers ? '編輯回答 / 預判' : '補寫回答'}</button>
+                {e?.answers ? '編輯回答 / 預判 / 總結' : '補寫回答'}</button>
             )}
           </div>
         )}

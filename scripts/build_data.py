@@ -433,18 +433,26 @@ def main():
         close_utc = datetime.fromisoformat(qdate).replace(tzinfo=timezone.utc) + timedelta(hours=21, minutes=15)
         qfile = qdir / f"{qdate}.json"
         force = os.environ.get("FORCE_QUESTIONS") == "1"
-        # 舊版只有 3 題的檔案：補上資金流向題（保留原本 3 題，已寫的回答不受影響）
+        # 舊版題目檔：補上缺少的題組（資金流向、美元/黃金/加密）；原有題目與已寫的回答不受影響
         if qfile.exists() and not force:
             try:
                 old_q = json.loads(qfile.read_text(encoding="utf-8"))
-                if len(old_q.get("questions", [])) == 3:
+                types = {x.get("type") for x in old_q.get("questions", [])}
+                added = []
+                if "flow" not in types and len(old_q.get("questions", [])) == 3:
                     fq, ft = q_mod.flow_questions(M)
                     old_q["questions"] += fq
                     old_q["flows"] = ft
+                    added.append("資金流向")
+                    types.add("flow")
+                if "asset" not in types and "flow" in types:
+                    old_q["questions"] += q_mod.asset_questions(M, news["items"])
+                    added.append("美元/黃金/加密")
+                if added:
                     qfile.write_text(json.dumps(old_q, ensure_ascii=False, indent=1), encoding="utf-8")
-                    generated = f"{qdate}（補上資金流向題）"
+                    generated = f"{qdate}（補上{'、'.join(added)}題）"
             except Exception as e:  # noqa: BLE001
-                ERRORS.append(f"補資金流向題: {e}")
+                ERRORS.append(f"補題: {e}")
         if (now >= close_utc and not qfile.exists()) or force:
             qs, mv, engine = q_mod.generate(M, news["items"], events_on(qdate))
             snap = {k: {"v": M[k].get("last"), "chg_1d": M[k].get("chg_1d"), "rate": M[k]["rate"]}

@@ -56,9 +56,9 @@ export function flatten(entries, metrics, qIndex) {
       const p = e.predictions?.[i]
       const o = p?.dir ? outcome(metrics, p, date) : null
       rows.push({
-        date, i, q, a: e.answers?.[i] || '', type: e.types?.[i] || (i >= 3 ? 'flow' : 'market'),
+        date, i, q, a: e.answers?.[i] || '', type: e.types?.[i] || (i >= 6 ? 'asset' : i >= 3 ? 'flow' : 'market'),
         pred: p?.dir ? p : null, o, events: e.events?.length ? e.events : evMap.get(date) || [],
-        grade: e.grade, note: e.review,
+        grade: e.grade, note: e.review, summary: e.summary,
       })
     })
   }
@@ -78,7 +78,20 @@ export const DRIVERS = [
   ['技術面', /支撐|壓力|均線|突破|跌破|量能|成交量/], ['情緒/部位', /情緒|部位|擁擠|空單|軋空|散戶/],
 ]
 
-export function stats(rows, entries) {
+/** 每日總結的驗證：整體方向（以美股）＋看好/看壞資產，皆以 5 個交易日 */
+export function summaryCalls(entries, metrics) {
+  const out = []
+  for (const [date, e] of Object.entries(entries || {})) {
+    const s = e.summary
+    if (!s) continue
+    if (s.bias) out.push({ date, kind: '整體方向', asset: 'spx', dir: s.bias === 'bull' ? 'up' : s.bias === 'bear' ? 'down' : 'flat' })
+    ;(s.long || []).forEach((k) => out.push({ date, kind: '看好', asset: k, dir: 'up' }))
+    ;(s.short || []).forEach((k) => out.push({ date, kind: '看壞', asset: k, dir: 'down' }))
+  }
+  return out.map((c) => ({ ...c, o: outcome(metrics, { asset: c.asset, dir: c.dir, h: 5 }, c.date) }))
+}
+
+export function stats(rows, entries, metrics) {
   const days = Object.values(entries || {}).filter((e) => e.answers?.some((a) => a?.trim()))
   const dates = days.map((e) => e.date).sort()
   // 連續作答（以有題目的交易日序列計，簡化為：相鄰作答日相差 ≤ 3 天視為連續，涵蓋週末）
@@ -103,12 +116,22 @@ export function stats(rows, entries) {
     preds: preds.length, pending: preds.filter((r) => r.o?.pending).length,
     overall: rate(preds),
     byAsset: group((r) => ASSETS[r.pred.asset]?.name || r.pred.asset),
-    byType: group((r) => (r.type === 'flow' ? '資金流向題' : '市場推敲題')),
+    byType: group((r) => ({ flow: '資金流向題', asset: '美元/黃金/加密題' }[r.type] || '市場推敲題')),
     byH: group((r) => `${r.pred.h} 日`),
     byConf: group((r) => `信心${CONF[r.pred.conf || 2]}`),
     byEvent: group((r) => (r.events.length ? '事件日' : '一般日')),
     byDir: group((r) => DIRS[r.pred.dir]),
     drivers, grades,
+    summaries: Object.values(entries || {}).filter((e) => e.summary && (e.summary.theme?.trim() || e.summary.plan?.trim() || e.summary.bias)).length,
+    sumCalls: (() => {
+      const calls = summaryCalls(entries, metrics)
+      const done = calls.filter((c) => c.o && !c.o.pending && c.o.hit !== null)
+      const hit = done.filter((c) => c.o.hit).length
+      const by = {}
+      done.forEach((c) => { (by[c.kind] ||= { k: c.kind, n: 0, hit: 0 }); by[c.kind].n++; if (c.o.hit) by[c.kind].hit++ })
+      return { n: done.length, hit, pct: done.length ? hit / done.length : null, pending: calls.filter((c) => c.o?.pending).length,
+        by: Object.values(by).map((g) => ({ ...g, pct: g.hit / g.n })) }
+    })(),
     misses: preds.filter((r) => r.o && !r.o.pending && r.o.hit === false).sort((a, b) => Math.abs(b.o.z) - Math.abs(a.o.z)),
     unreviewed: days.filter((e) => !e.review?.trim() && e.predictions?.some((p) => p?.dir)).map((e) => e.date),
   }
@@ -143,6 +166,10 @@ export function summaryText(st, label) {
   if (g.logic_ok + g.timing + g.logic_bad) lines.push(`事後自評：邏輯正確 ${g.logic_ok} 天、方向對但時機錯 ${g.timing} 天、邏輯錯誤 ${g.logic_bad} 天。`)
   if (st.misses.length) lines.push(`偏差最大的一次：${st.misses[0].date} 預判 ${ASSETS[st.misses[0].pred.asset]?.name} ${DIRS[st.misses[0].pred.dir]}，實際 ${fmtMove(st.misses[0].o)}（${st.misses[0].o.z.toFixed(1)}σ），值得回頭重讀。`)
   if (st.unreviewed.length) lines.push(`尚有 ${st.unreviewed.length} 天的預判還沒寫事後檢討。`)
+  if (st.summaries) {
+    const sc = st.sumCalls
+    lines.push(`寫了 ${st.summaries} 天的總結；總結中的方向與看好/看壞判斷（5 日驗證）已到期 ${sc.n} 個，命中 ${sc.hit} 個（${pct(sc.pct)}）${sc.pending ? `，${sc.pending} 個未到期` : ''}。`)
+  }
   if (!st.preds) lines.push('目前還沒有預判紀錄：作答時在每題下方選「我的判斷」，系統才能自動驗證命中率。')
   return lines
 }
@@ -167,6 +194,12 @@ export function aiPrompt(rows, st, label) {
         lines.push(`  - 預判：${ASSETS[r.pred.asset]?.name} ${DIRS[r.pred.dir]}，${r.pred.h} 日，信心${CONF[r.pred.conf || 2]} → ${res}`)
       }
     })
+    const sm = arr[0].summary
+    if (sm && (sm.theme || sm.plan || sm.bias)) {
+      lines.push(`- 當日總結：主軸「${sm.theme || '—'}」；方向 ${({ bull: '偏多', neutral: '中性', bear: '偏空' })[sm.bias] || '—'}；看好 ${(sm.long || []).map((k) => ASSETS[k]?.name).join('、') || '—'}；看壞 ${(sm.short || []).map((k) => ASSETS[k]?.name).join('、') || '—'}`)
+      if (sm.plan) lines.push(`  - 策略：${sm.plan}`)
+      if (sm.invalidation) lines.push(`  - 失效條件：${sm.invalidation}`)
+    }
     if (arr[0].note) lines.push(`- 事後檢討：${arr[0].note}`)
   }
   return lines.join('\n')
