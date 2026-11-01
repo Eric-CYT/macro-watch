@@ -434,6 +434,17 @@ def main():
         "questions_generated": generated,
     }
     (out / "market.json").write_text(S.dumps(market), encoding="utf-8")
+    compact = {
+        "updated": market["updated"], "summary": summary, "errors": market["quality"]["errors"],
+        "questions_generated": generated,
+        "metrics": {k: {f: m.get(f) for f in ("name", "source", "status", "last", "date", "chg_1d", "chg_5d", "checks", "note")}
+                    | {"tail": (m.get("history") or [])[-3:]} for k, m in M.items()},
+        "macro": {k: {"name": m.get("name"), "status": m.get("status"), "checks": m.get("checks"),
+                      "tail": (m.get("series") or [])[-3:]} for k, m in macro.items()},
+        "heatmap_missing": {g: [x["sym"] for x in v if x["chg"] is None] for g, v in heat.items()},
+        "heatmap_dates": {g: sorted({x["date"] for x in v if x["date"]}) for g, v in heat.items()},
+    }
+    (out / "quality.json").write_text(json.dumps(compact, ensure_ascii=False, indent=1), encoding="utf-8")
     (out / "config.json").write_text(json.dumps(CONFIG, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False))
     for e in market["quality"]["errors"]:
