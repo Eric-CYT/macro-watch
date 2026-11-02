@@ -5,16 +5,24 @@ import {
   MARKETS, STATES, TRENDS, LEVELS, BIASES, DECISIONS, CYCLES, FUND_STATES, FUND_DEST, TA_SIGNALS, TA_VERDICT,
   emptyTrade, normalize, marketName, flowZ, flowRanking,
   loadTrades, addTrade, deleteTrade, loadTradeDraft, saveTradeDraft, clearTradeDraft, reference, checks, followUp,
-  QMETA, loadOrder, saveOrder, DEFAULT_ORDER,
+  QMETA, loadOrder, saveOrder, DEFAULT_ORDER, updateTrade,
 } from '../lib/trades'
+import { Sizing, ResultEditor, SnapLine, Performance, resultOf, loadAcct } from './TradeExtras'
+import { macroSnapshot } from '../lib/position'
+
+const freshTrade = (keep = {}) => {
+  const e = emptyTrade()
+  const a = loadAcct() || {}
+  return { ...e, ...keep, pos: { ...e.pos, ...(a.equity ? { equity: a.equity } : {}), ...(a.riskPct ? { riskPct: a.riskPct } : {}), ...(keep.pos || {}) } }
+}
 
 const inp = 'bg-bg border border-line rounded-lg px-2 py-1.5 text-[13px] text-ink placeholder:text-muted focus:outline-none focus:border-s1'
 const sel = `${inp} pr-6`
 
-export default function TradeCheck({ metrics }) {
+export default function TradeCheck({ metrics, flows }) {
   const [t, setT] = useState(() => {
     const d = loadTradeDraft()
-    return d ? normalize(d) : emptyTrade()
+    return d ? normalize(d) : freshTrade()
   })
   const [list, setList] = useState(loadTrades)
   const [msg, setMsg] = useState('')
@@ -47,9 +55,9 @@ export default function TradeCheck({ metrics }) {
 
   const submit = () => {
     if (errors && !confirm(`還有 ${errors} 個邏輯錯誤，仍要記錄嗎？`)) return
-    setList(addTrade({ ...t, ref: ref ? { last: ref.last, date: ref.date, trend: ref.trend } : null }))
+    setList(addTrade({ ...t, ref: ref ? { last: ref.last, date: ref.date, trend: ref.trend } : null, snap: macroSnapshot(metrics, flows) }))
     clearTradeDraft(); dirty.current = false
-    setT({ ...emptyTrade(), market: t.market, custom: t.custom, product: t.product })
+    setT(freshTrade({ market: t.market, custom: t.custom, product: t.product, pos: { inst: t.pos.inst, pv: t.pos.pv } }))
     setMsg('已記錄 ✓（下方歷史紀錄可追蹤後續走勢）')
     setTimeout(() => setMsg(''), 4000)
   }
@@ -266,10 +274,11 @@ export default function TradeCheck({ metrics }) {
           </div>
 
           {order.map((k, i) => <Fragment key={k}>{blocks[k]?.(i + 1)}</Fragment>)}
+          <Sizing t={t} set={set} />
 
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             <button onClick={submit} className="px-4 py-2 rounded-lg bg-s1 text-white text-sm font-medium">記錄這次檢查</button>
-            <button onClick={() => { clearTradeDraft(); dirty.current = false; setT({ ...emptyTrade(), market: t.market }) }}
+            <button onClick={() => { clearTradeDraft(); dirty.current = false; setT(freshTrade({ market: t.market })) }}
               className="px-3 py-2 rounded-lg bg-surface2 text-sm text-ink2">清空重填</button>
             <span className="text-[12px] text-good">{msg}</span>
             <span className="text-[11px] text-muted ml-auto">填寫中會自動暫存</span>
@@ -291,6 +300,8 @@ export default function TradeCheck({ metrics }) {
         <Summary t={t} order={order} />
       </div>
 
+      <div className="xl:col-span-2"><Performance list={list} /></div>
+
       <div className="xl:col-span-2">
         <Panel title={`歷史交易檢查紀錄（${shown.length}）`} right={
           <select value={filter} onChange={(e) => setFilter(e.target.value)} className={sel} aria-label="篩選市場">
@@ -300,7 +311,8 @@ export default function TradeCheck({ metrics }) {
           {shown.length ? (
             <div className="space-y-2">
               {shown.map((x) => <TradeRow key={x.id} t={x} order={order} m={x.market !== 'other' ? metrics?.[x.market] : null}
-                onDelete={() => confirm('刪除這筆紀錄？') && setList(deleteTrade(x.id))} />)}
+                onDelete={() => confirm('刪除這筆紀錄？') && setList(deleteTrade(x.id))}
+                onResult={(r) => setList(updateTrade(x.id, { result: r }))} />)}
             </div>
           ) : <p className="text-[12px] text-muted">還沒有紀錄。每次交易前填一次，累積下來就能回頭檢討自己的判斷。</p>}
         </Panel>
@@ -383,9 +395,10 @@ function Summary({ t, order }) {
   )
 }
 
-function TradeRow({ t, m, order, onDelete }) {
+function TradeRow({ t, m, order, onDelete, onResult }) {
   const [open, setOpen] = useState(false)
   const f = followUp(t, m)
+  const res = resultOf(t)
   const created = new Date(t.created_at).toLocaleString('zh-TW', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   return (
     <div className="rounded-lg bg-surface2 p-2">
@@ -394,6 +407,10 @@ function TradeRow({ t, m, order, onDelete }) {
         <span className="text-[13px] text-ink font-medium">{marketName(t)}{t.product && <span className="text-ink2 font-normal">｜{t.product}</span>}</span>
         <span className={`text-[12px] ${t.q5.bias === '偏多' ? 'up' : t.q5.bias === '偏空' ? 'down' : 'text-ink2'}`}>{t.q5.bias || '—'}</span>
         <span className="text-[12px] text-ink2">{t.q8.decision || '未決定'}{t.q8.cycle ? `・${t.q8.cycle}` : ''}</span>
+        {t.result?.status && t.result.status !== '未進場' && (
+          <span className="text-[12px] px-1.5 rounded bg-bg num">{t.result.status}
+            {res && <b className={`ml-1 ${res.net > 0 ? 'up' : res.net < 0 ? 'down' : ''}`}>{res.R != null ? `${res.R > 0 ? '+' : ''}${res.R.toFixed(2)}R` : Math.round(res.net).toLocaleString()}</b>}</span>
+        )}
         {f && (
           <span className="text-[12px] num ml-auto">
             至今 <span className={f.chg > 0 ? 'up' : f.chg < 0 ? 'down' : ''}>{f.rate ? `${f.chg > 0 ? '+' : ''}${f.chg.toFixed(1)}bp` : `${f.chg > 0 ? '+' : ''}${f.chg.toFixed(2)}%`}</span>
@@ -412,7 +429,9 @@ function TradeRow({ t, m, order, onDelete }) {
               <p key={k}>{i + 1}. {QMETA[k].short}：{d[k][0] || '—'}{d[k][1] && <span className="block pl-4 text-muted whitespace-pre-wrap">備註：{d[k][1]}</span>}</p>
             ))
           })()}
-          {f && <p className="text-muted num">追蹤：基準 {fmt(f.e, 2)} → 最新 {fmt(f.last, 2)}（{f.lastDate}，{f.days} 個收盤）。防守／目標以日收盤價判斷。</p>}
+          <SnapLine s={t.snap} />
+          {f && <p className="text-muted num">追蹤：基準 {fmt(f.e, 2)} → 最新 {fmt(f.last, 2)}（{f.lastDate}，{f.days} 個收盤）。{f.mismatch ? '你的進場價與參考指數差距超過 15%（可能是個股或其他商品），改以當日指數為基準追蹤方向，不判斷防守／目標。' : '防守／目標以日收盤價判斷。'}</p>}
+          <ResultEditor t={t} onSave={onResult} />
           <button onClick={onDelete} className="text-critical text-[11px]">刪除</button>
         </div>
       )}

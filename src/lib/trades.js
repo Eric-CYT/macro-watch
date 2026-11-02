@@ -36,13 +36,14 @@ export const emptyTrade = () => ({
   q10: { dest: [], memo: '' },
   q11: { signals: [], verdict: '', memo: '' },
   q12: { t1: '', t2: '', memo: '' },
+  pos: { equity: '', riskPct: '1', inst: 'tx', pv: '' },
 })
 
 /** 舊紀錄補齊新欄位（目標位從第 7 題搬到第 12 題） */
 export function normalize(t) {
   const e = emptyTrade()
   const out = { ...e, ...t }
-  for (const k of Object.keys(e)) if (k.startsWith('q')) out[k] = { ...e[k], ...(t?.[k] || {}) }
+  for (const k of Object.keys(e)) if (k.startsWith('q') || k === 'pos') out[k] = { ...e[k], ...(t?.[k] || {}) }
   if (!out.q12.t1 && t?.q7?.target) out.q12 = { ...out.q12, t1: t.q7.target }
   return out
 }
@@ -210,23 +211,27 @@ export function followUp(t, m) {
   if (!h?.length || t.market === 'other') return null
   const d = t.created_at.slice(0, 10)
   const after = h.filter(([x]) => x > d)
-  const e = num(t.q7.entry) ?? (h.filter(([x]) => x <= d).at(-1)?.[1])
+  const base = h.filter(([x]) => x <= d).at(-1)?.[1]
+  let e = num(t.q7.entry) ?? base
   if (e == null) return null
+  // 進場價若與參考指數差太多（例如填的是個股 2330 的價格，但市場選台股加權）→ 改用指數追蹤，不判斷防守／目標
+  const mismatch = !m.rate && base != null && Math.abs(e / base - 1) > 0.15
+  if (mismatch) e = base
   const last = h.at(-1)[1]
   const chg = m.rate ? (last - e) * 100 : (last / e - 1) * 100
-  const s = num(t.q7.stop)
+  const s = mismatch ? null : num(t.q7.stop)
   let stopHit = null
   if (s != null && after.length) {
     if (t.q5.bias === '偏多') stopHit = after.find(([, v]) => v <= s)
     else if (t.q5.bias === '偏空') stopHit = after.find(([, v]) => v >= s)
     else stopHit = undefined
   }
-  const g = num(t.q12?.t1 ?? t.q7?.target)
+  const g = mismatch ? null : num(t.q12?.t1 ?? t.q7?.target)
   let targetHit = null
   if (g != null && after.length) {
     if (t.q5.bias === '偏多') targetHit = after.find(([, v]) => v >= g)
     else if (t.q5.bias === '偏空') targetHit = after.find(([, v]) => v <= g)
   }
   const dirOk = t.q5.bias === '偏多' ? chg > 0 : t.q5.bias === '偏空' ? chg < 0 : null
-  return { e, last, chg, rate: !!m.rate, days: after.length, stopHit, targetHit, dirOk, lastDate: h.at(-1)[0] }
+  return { e, last, chg, rate: !!m.rate, days: after.length, stopHit, targetHit, dirOk, lastDate: h.at(-1)[0], mismatch }
 }

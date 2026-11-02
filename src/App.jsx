@@ -99,7 +99,7 @@ export default function App() {
       ) : route === 'matrix' ? (
         <main className="p-3"><Matrix metrics={market.metrics} /></main>
       ) : route === 'trade' ? (
-        <main className="p-3"><TradeCheck metrics={market.metrics} /></main>
+        <main className="p-3"><TradeCheck metrics={market.metrics} flows={market.flows} /></main>
       ) : route === 'review' ? (
         <main className="p-3"><Review metrics={market.metrics} index={qIndex} /></main>
       ) : route === 'quality' ? (
