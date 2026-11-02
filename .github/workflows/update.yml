@@ -49,6 +49,7 @@ jobs:
         env:
           PAGES_URL: ${{ steps.pages.outputs.base_url }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           FORCE_QUESTIONS: ${{ github.event.inputs.force_questions }}
         run: python scripts/build_data.py --out public/data --archive data
 
