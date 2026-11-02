@@ -18,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import news as news_mod  # noqa: E402
+import cycle as cycle_mod  # noqa: E402
 import questions as q_mod  # noqa: E402
 import sources as S  # noqa: E402
 import validate as V  # noqa: E402
@@ -425,7 +426,7 @@ def main():
         for e in events_on(d):
             upcoming.append({"date": d, "event": e})
 
-    # ------------------------------------------------------------ 每日提問
+    # ------------------------------------------------------------ 推敲提問：每 3 個交易日一期（v2）
     qdir = arch / "questions"
     qdate = (M.get("spx") or {}).get("date")
     generated = None
@@ -433,34 +434,30 @@ def main():
         close_utc = datetime.fromisoformat(qdate).replace(tzinfo=timezone.utc) + timedelta(hours=21, minutes=15)
         qfile = qdir / f"{qdate}.json"
         force = os.environ.get("FORCE_QUESTIONS") == "1"
-        # 舊版題目檔：補上缺少的題組（資金流向、美元/黃金/加密）；原有題目與已寫的回答不受影響
-        if qfile.exists() and not force:
+        prev = sorted(p for p in qdir.glob("20*.json") if p.stem < qdate)
+        prev_ver, prev_date = None, None
+        if prev:
+            prev_date = prev[-1].stem
             try:
-                old_q = json.loads(qfile.read_text(encoding="utf-8"))
-                types = {x.get("type") for x in old_q.get("questions", [])}
-                added = []
-                if "flow" not in types and len(old_q.get("questions", [])) == 3:
-                    fq, ft = q_mod.flow_questions(M)
-                    old_q["questions"] += fq
-                    old_q["flows"] = ft
-                    added.append("資金流向")
-                    types.add("flow")
-                if "asset" not in types and "flow" in types:
-                    old_q["questions"] += q_mod.asset_questions(M, news["items"])
-                    added.append("美元/黃金/加密")
-                if added:
-                    qfile.write_text(json.dumps(old_q, ensure_ascii=False, indent=1), encoding="utf-8")
-                    generated = f"{qdate}（補上{'、'.join(added)}題）"
-            except Exception as e:  # noqa: BLE001
-                ERRORS.append(f"補題: {e}")
-        if (now >= close_utc and not qfile.exists()) or force:
-            qs, mv, engine = q_mod.generate(M, news["items"], events_on(qdate))
+                prev_ver = json.loads(prev[-1].read_text(encoding="utf-8")).get("version")
+            except Exception:  # noqa: BLE001
+                prev_ver = None
+        spx_dates = [d for d, _ in (M.get("spx") or {}).get("history") or []]
+        elapsed = sum(1 for d in spx_dates if prev_date and prev_date < d <= qdate) if prev_date else 99
+        # 規則：距上一期滿 3 個交易日；若上一期是舊制（v1），下一次收盤就切換新制
+        due = elapsed >= cycle_mod.CYCLE or prev_ver != 2
+        if (now >= close_utc and not qfile.exists() and due) or force:
+            period_from = spx_dates[-1 - cycle_mod.CYCLE] if len(spx_dates) > cycle_mod.CYCLE else qdate
+            period = f"{period_from[5:]}→{qdate[5:]}，{cycle_mod.CYCLE} 個交易日"
+            built = cycle_mod.build(M, period)
             snap = {k: {"v": M[k].get("last"), "chg_1d": M[k].get("chg_1d"), "rate": M[k]["rate"]}
                     for k in ("vix", "dxy", "us10y", "us02y", "spread", "hy", "usdjpy", "usdtwd", "btc", "taiex",
                               "spx", "sox", "gold", "wti", "copper") if k in M and M[k].get("last") is not None}
-            payload = {"date": qdate, "generated_at": now.isoformat(timespec="seconds"), "engine": engine,
-                       "events": events_on(qdate), "snapshot": snap, "moves": mv, "questions": qs,
-                       "flows": q_mod.flow_table(M),
+            # 期間內的事件
+            evs = sorted({e for d in spx_dates if period_from < d <= qdate for e in events_on(d)})
+            payload = {"date": qdate, "version": 2, "generated_at": now.isoformat(timespec="seconds"), "engine": "rules",
+                       "cycle": {"from": period_from, "to": qdate, "n": cycle_mod.CYCLE}, "events": evs, "snapshot": snap,
+                       **built,
                        "headlines": [{"title": n["title"], "url": n["url"], "tags": n["tags"]} for n in news["items"][:8]]}
             qfile.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
             generated = qdate

@@ -3,6 +3,7 @@ import { Panel, MetricRow, StatusDot, CheckLine } from './components/bits'
 import { Heatmap, BtcDxyChart, IntradayChart, HistoryChart, MacroChart, FlowChart } from './components/charts'
 import News from './components/News'
 import Reflection from './components/Reflection'
+import { loadEntries } from './lib/journal'
 import Journal from './components/Journal'
 import Quality from './components/Quality'
 import Review from './components/Review'
@@ -89,6 +90,10 @@ export default function App() {
 
       {route === 'journal' ? (
         <main className="p-3"><Journal index={qIndex} initialDate={jDate} metrics={market.metrics} /></main>
+      ) : route === 'reflect' ? (
+        <main className="p-3 max-w-6xl mx-auto">
+          {today ? <Reflection q={today} metrics={M} onSaved={() => {}} /> : <p className="text-muted">尚未產生本期題目</p>}
+        </main>
       ) : route === 'trade' ? (
         <main className="p-3"><TradeCheck metrics={market.metrics} /></main>
       ) : route === 'review' ? (
@@ -137,10 +142,20 @@ export default function App() {
           {/* 右：新聞 + 反思 */}
           <div className={`${tab === 'news' || tab === 'reflect' ? 'flex' : 'hidden'} xl:flex flex-col gap-3 min-h-0`}>
             <News news={news} className={`${tab === 'news' ? 'flex' : 'hidden'} xl:flex xl:max-h-[52vh] max-h-none`} />
-            <div className={`${tab === 'reflect' ? 'block' : 'hidden'} xl:block`}>
-              <Reflection q={today} onSaved={() => {}} />
-              <a href={`#/journal`} className="block text-center text-[12px] text-s1 mt-2">→ 開啟歷史推敲日誌</a>
-            </div>
+            {today?.version === 2 ? (
+              <>
+                {/* 寬螢幕：精簡摘要＋前往獨立作答頁；手機：直接完整作答 */}
+                <div className="hidden xl:block"><ReflectionTeaser q={today} /></div>
+                <div className={`${tab === 'reflect' ? 'block' : 'hidden'} xl:hidden`}>
+                  <Reflection q={today} metrics={M} onSaved={() => {}} />
+                </div>
+              </>
+            ) : (
+              <div className={`${tab === 'reflect' ? 'block' : 'hidden'} xl:block`}>
+                <Reflection q={today} metrics={M} onSaved={() => {}} />
+              </div>
+            )}
+            <a href={`#/journal`} className={`${tab === 'reflect' ? 'block' : 'hidden'} xl:block text-center text-[12px] text-s1`}>→ 開啟歷史推敲日誌</a>
           </div>
 
           {/* 下：總經 */}
@@ -161,7 +176,7 @@ export default function App() {
 
       {pick && M[pick] && <Detail m={M[pick]} onClose={() => setPick(null)} />}
 
-      {!['journal', 'quality', 'review', 'trade'].includes(route) && (
+      {!['journal', 'quality', 'review', 'trade', 'reflect'].includes(route) && (
         <nav className="xl:hidden fixed bottom-0 inset-x-0 bg-surface border-t border-line grid grid-cols-4 pb-safe z-40">
           {TABS.map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); scrollTo(0, 0) }}
@@ -186,7 +201,7 @@ function Header({ market, route, conv, setConv }) {
   return (
     <header className="sticky top-0 z-30 bg-bg/95 backdrop-blur border-b border-line px-3 py-2 flex items-center gap-2 flex-wrap">
       <h1 className="font-semibold text-[15px] mr-2">Macro & Market Watch</h1>
-      <nav className="flex gap-1 flex-wrap">{link('', '儀表板')}{link('journal', '推敲日誌')}{link('review', '統整驗證')}{link('trade', '交易前檢查')}{link('quality', '資料驗證')}</nav>
+      <nav className="flex gap-1 flex-wrap">{link('', '儀表板')}{link('reflect', '本期推敲')}{link('journal', '推敲日誌')}{link('review', '統整驗證')}{link('trade', '交易前檢查')}{link('quality', '資料驗證')}</nav>
       <div className="ml-auto flex items-center gap-2 text-[11px] text-ink2">
         <a href="#/quality" className="px-2 py-1 rounded-md bg-surface2" title="交叉比對摘要">
           <span style={{ color: bad ? STATUS.warn.c : STATUS.ok.c }}>{bad ? '⚠' : '✓'}</span> 一致 {s.ok}{bad ? ` · 需留意 ${bad}` : ''} · 單源 {s.single}
@@ -317,5 +332,28 @@ function Detail({ m, onClose }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/** 儀表板右欄：本期推敲的精簡摘要 */
+function ReflectionTeaser({ q }) {
+  const a = q.assessment || {}
+  const e = loadEntries()[q.date]
+  const done = e?.answers?.filter((x) => x?.trim()).length || 0
+  const RC = { risk_on: 'var(--up)', risk_off: 'var(--down)', deleverage: 'var(--color-critical)', liquidity_up: 'var(--color-good)', mixed: 'var(--color-muted)' }
+  return (
+    <Panel title={<>本期推敲 <span className="text-muted font-normal">· {q.cycle?.from?.slice(5)}→{q.cycle?.to?.slice(5)}</span></>}
+      right={<span className="text-[11px] text-muted">{done ? `已答 ${done}/6` : '尚未作答'}</span>}>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        <span className="text-[11px] px-2 py-0.5 rounded-full border" style={{ borderColor: RC[a.regime], color: RC[a.regime] }}>{a.regime_txt}</span>
+        <span className="text-[11px] px-2 py-0.5 rounded-full border border-line text-ink2">流動性：{a.liquidity}</span>
+      </div>
+      <ul className="text-[12px] text-ink2 space-y-1 leading-relaxed">
+        {(a.text || []).slice(0, 4).map((l, i) => <li key={i}>{i === 0 ? '🧭 ' : '• '}{l}</li>)}
+      </ul>
+      <div className="mt-2 text-[12px] text-ink">焦點市場：{(q.focus || []).map((k) => q.markets?.[k]?.name).join('、')}</div>
+      <a href="#/reflect" className="mt-3 block text-center px-3 py-2 rounded-lg bg-s1 text-white text-sm font-medium">
+        {done ? '繼續本期推敲 →' : '開始本期推敲 →'}</a>
+    </Panel>
   )
 }

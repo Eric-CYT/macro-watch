@@ -174,15 +174,20 @@ def test_full_pipeline(sample_out=None):
             assert m["macro"][k]["series"], k
         qi = json.loads((out / "questions" / "index.json").read_text())
         q = json.loads((out / "questions" / f"{qi[-1]['d']}.json").read_text())
-        assert len(q["questions"]) == 9 and all(x["text"] for x in q["questions"]), len(q["questions"])
-        assert sum(1 for x in q["questions"] if x["type"] == "flow") == 3
-        assert [x.get("topic") for x in q["questions"] if x["type"] == "asset"] == ["美元", "黃金", "加密"]
+        assert q["version"] == 2 and len(q["questions"]) == 6, (q.get("version"), len(q["questions"]))
+        assert len(q["focus"]) == 2 and set(q["markets"]) <= set(["dxy", "gold", "btc", "spx", "taiex", "us10y", "wti"])
+        assert all(len(m["questions"]) == 3 for m in q["markets"].values())
+        A = q["assessment"]
+        assert A["regime"] and A["liquidity"] and A["text"] and len(A["rows"]) == 7
         if sample_out:
             m["SAMPLE"] = True
             (out / "market.json").write_text(json.dumps(m, ensure_ascii=False))
-        print("問題範例：")
+        print("資金動向評估：")
+        for l in A["text"]:
+            print("  ", l)
+        print("焦點市場：", q["focus"])
         for x in q["questions"]:
-            print(" -", x["text"])
+            print(" -", x["text"][:160])
 
 
 if __name__ == "__main__":

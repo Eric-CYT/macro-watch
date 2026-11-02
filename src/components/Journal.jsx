@@ -5,6 +5,7 @@ import { loadEntries, upsertEntry, exportJSON, importJSON, loadSync, saveSync, s
 import { PredictionPicker, OutcomeBadge, AfterMoves } from './Prediction'
 import { SummaryBox, emptySummary } from './Summary'
 import { groupOf, typeOf } from '../lib/groups'
+import AssessmentCard from './Assessment'
 
 const GRADES = [['logic_ok', '✓ 邏輯正確'], ['timing', '◐ 方向對、時機錯'], ['logic_bad', '✗ 邏輯錯誤']]
 
@@ -27,6 +28,8 @@ export default function Journal({ index, initialDate, metrics }) {
   const [review, setReview] = useState('')
 
   const qmap = useMemo(() => new Map((index || []).map((x) => [x.d, x.ev])), [index])
+  // 網址帶的日期改變時（例如從統整頁點進來）跟著切換
+  useEffect(() => { if (initialDate) { setSel(initialDate); setMonth(initialDate.slice(0, 7)) } }, [initialDate])
 
   const hasQ = !!sel && qmap.has(sel)
   // 只在切換日期時重設（每 5 分鐘的資料刷新不會清掉編輯中的內容）
@@ -85,6 +88,9 @@ export default function Journal({ index, initialDate, metrics }) {
   const questions = fileQs.length > (e?.questions?.length || 0) ? fileQs : (e?.questions || fileQs)
   const qTypes = qfile?.questions?.map((x) => x.type) || []
   const qAssets = (i) => e?.assets?.[i] || qfile?.questions?.[i]?.assets || []
+  const isV2 = e?.version === 2 || qfile?.version === 2
+  const v2Focus = e?.focus || qfile?.focus || []
+  const v2Names = v2Focus.map((k) => qfile?.markets?.[k]?.name || k)
   const snapshot = e?.snapshot || qfile?.snapshot
   const events = qmap.get(sel) || e?.events || []
 
@@ -160,6 +166,11 @@ export default function Journal({ index, initialDate, metrics }) {
       <Panel title={sel ? `${sel}${events.length ? ` · ${events.join(' / ')}` : ''}` : '選擇一天'}>
         {!sel && <p className="text-muted text-sm">點選日曆上的日期，回顧當天的宏觀數據、系統提問與你的推敲。</p>}
         {sel && !questions.length && <p className="text-muted text-sm">這天沒有提問紀錄。</p>}
+        {isV2 && qfile?.assessment && (
+          <details className="mb-3"><summary className="text-[12px] text-ink2 cursor-pointer">
+            當期系統資金動向評估（{qfile.cycle?.from} → {qfile.cycle?.to}）</summary>
+            <div className="mt-2"><AssessmentCard a={qfile.assessment} /></div></details>
+        )}
         {snapshot && (
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 mb-3">
             {Object.entries(snapshot).map(([k, s]) => (
@@ -174,7 +185,11 @@ export default function Journal({ index, initialDate, metrics }) {
         )}
         {questions.map((qt, i) => (
           <div key={i} className="mb-3">
-            {(i === 0 || typeOf(qTypes[i] || e?.types?.[i], i) !== typeOf(qTypes[i - 1] || e?.types?.[i - 1], i - 1)) && (
+            {isV2 && i % 3 === 0 && (
+              <div className={`text-[11px] font-semibold mb-1 ${i ? 'mt-4 pt-3 border-t border-line' : ''} ${i ? 'text-s2' : 'text-s1'}`}>
+                ▍焦點市場 {i / 3 + 1}：{v2Names[i / 3] || '—'}</div>
+            )}
+            {!isV2 && (i === 0 || typeOf(qTypes[i] || e?.types?.[i], i) !== typeOf(qTypes[i - 1] || e?.types?.[i - 1], i - 1)) && (
               <div className={`text-[11px] font-semibold mb-1 ${i ? 'mt-4 pt-3 border-t border-line' : ''} ${groupOf(qTypes[i] || e?.types?.[i], i).cls}`}>
                 {groupOf(qTypes[i] || e?.types?.[i], i).label}</div>
             )}
@@ -186,7 +201,7 @@ export default function Journal({ index, initialDate, metrics }) {
               <p className="mt-1 text-[13px] text-ink2 whitespace-pre-wrap pl-2 border-l-2 border-line">{e?.answers?.[i] || '（未作答）'}</p>
             )}
             {edit ? (
-              <PredictionPicker value={editPreds[i]} suggest={qAssets(i)}
+              <PredictionPicker value={editPreds[i]} suggest={qAssets(i)} defaultH={isV2 ? 3 : 5}
                 onChange={(v) => setEditPreds((a) => a.map((p, j) => (j === i ? v : p)))} />
             ) : e?.predictions?.[i]?.dir ? (
               <OutcomeBadge metrics={metrics} pred={e.predictions[i]} date={sel} />
@@ -198,7 +213,7 @@ export default function Journal({ index, initialDate, metrics }) {
         {questions.length > 0 && (edit || e?.summary) && (
           <div className="mt-4 pt-3 border-t border-line mb-3">
             <div className="text-[11px] font-semibold mb-1 text-warning">▍總結：接下來的策略與市場方向</div>
-            {edit ? <SummaryBox value={editSummary} onChange={setEditSummary} />
+            {edit ? <SummaryBox value={editSummary} onChange={setEditSummary} showAgree={isV2} />
               : <SummaryBox value={e.summary} readOnly metrics={metrics} date={sel} />}
           </div>
         )}
@@ -221,7 +236,7 @@ export default function Journal({ index, initialDate, metrics }) {
               <button className="px-3 py-1 rounded bg-surface2 text-sm" onClick={() => {
                 setEdit(Array.from({ length: questions.length }, (_, j) => e?.answers?.[j] || ''))
                 setEditPreds(Array.from({ length: questions.length }, (_, j) => e?.predictions?.[j] || null))
-                setEditSummary({ ...emptySummary(), ...(e?.summary || {}) })
+                setEditSummary({ ...emptySummary(isV2 ? 3 : undefined), ...(e?.summary || {}) })
               }}>
                 {e?.answers ? '編輯回答 / 預判 / 總結' : '補寫回答'}</button>
             )}

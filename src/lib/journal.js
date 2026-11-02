@@ -123,12 +123,13 @@ export function feedback(answers, summary) {
   if (sm.theme?.trim() || sm.plan?.trim()) {
     if (!sm.invalidation?.trim()) msgs.push('總結建議：補上「失效條件」，沒有停損條件的策略只是觀點。')
     else if (!(sm.long?.length || sm.short?.length || sm.bias)) msgs.push('總結建議：選出整體方向或看好／看壞的資產，5 個交易日後系統會幫你自動對答案。')
-    else msgs.push('總結完整：有主軸、方向、策略與失效條件，5 個交易日後回來看驗證結果。')
-  } else if (answers.length > 6) {
-    msgs.push('別忘了最後的「總結」：把 9 題的推敲收斂成一句主軸與一個行動計畫，才是今天真正的產出。')
+    else msgs.push(`總結完整：有主軸、方向、策略與失效條件，${sm.h || 5} 個交易日後回來看驗證結果。`)
+    if (sm.h === 3 && !sm.agree) msgs.push('也表態一下你是否同意系統的資金動向評估，日後可以比較「系統 vs 你」誰比較準。')
+  } else if (answers.length >= 6) {
+    msgs.push(`別忘了最後的「總結」：把 ${answers.length} 題的推敲收斂成一句主軸與一個行動計畫，才是這一期真正的產出。`)
   }
   const flowAns = answers.slice(3, 6).filter((a) => a && a.trim())
-  if (total > 3 && flowAns.length && !flowAns.some((a) => /利率|美元|殖利率|流動性|避險|外資|央行|Fed|聯準會|通膨|匯/.test(a))) {
+  if (total === 9 && flowAns.length && !flowAns.some((a) => /利率|美元|殖利率|流動性|避險|外資|央行|Fed|聯準會|通膨|匯/.test(a))) {
     msgs.push('資金流向題建議：把「誰流出、誰流入」連到一個驅動因子（利率、美元、流動性、避險需求），推論才站得住。')
   }
   return msgs

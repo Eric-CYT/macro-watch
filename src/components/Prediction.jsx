@@ -3,9 +3,9 @@ import { ASSETS, DIRS, HORIZONS, CONF, outcome, fmtMove, afterMoves } from '../l
 const chip = (on) => `text-[11px] px-1.5 py-0.5 rounded border ${on ? 'bg-s1 border-s1 text-white' : 'border-line text-ink2 hover:bg-surface2'}`
 
 /** 每題下方的「我的判斷（選填）」 */
-export function PredictionPicker({ value, onChange, suggest = [] }) {
+export function PredictionPicker({ value, onChange, suggest = [], defaultH = 5 }) {
   const v = value || {}
-  const set = (patch) => onChange({ asset: v.asset || suggest[0] || 'spx', h: v.h || 5, conf: v.conf || 2, ...v, ...patch })
+  const set = (patch) => onChange({ asset: v.asset || suggest[0] || 'spx', h: v.h || defaultH, conf: v.conf || 2, ...v, ...patch })
   const assetKeys = [...new Set([...suggest, ...Object.keys(ASSETS)])]
   return (
     <div className="flex flex-wrap items-center gap-1 mt-1">
@@ -18,7 +18,7 @@ export function PredictionPicker({ value, onChange, suggest = [] }) {
         <button key={k} type="button" className={chip(v.dir === k)} onClick={() => (v.dir === k ? onChange(null) : set({ dir: k }))}>{l}</button>
       ))}
       <span className="text-muted text-[11px] ml-1">期間</span>
-      {HORIZONS.map((n) => <button key={n} type="button" className={chip(v.dir && (v.h || 5) === n)} onClick={() => set({ h: n })}>{n}日</button>)}
+      {HORIZONS.map((n) => <button key={n} type="button" className={chip(v.dir && (v.h || defaultH) === n)} onClick={() => set({ h: n })}>{n}日</button>)}
       <span className="text-muted text-[11px] ml-1">信心</span>
       {Object.entries(CONF).map(([k, l]) => <button key={k} type="button" className={chip(v.dir && String(v.conf || 2) === k)} onClick={() => set({ conf: Number(k) })}>{l}</button>)}
       {v.asset && ASSETS[v.asset]?.rate && <span className="text-[10px] text-muted">（利率類：↑ = 殖利率上升）</span>}

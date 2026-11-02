@@ -5,7 +5,14 @@ import { PredictionPicker } from './Prediction'
 import { SummaryBox, emptySummary, summaryFilled } from './Summary'
 import { groupOf, typeOf } from '../lib/groups'
 
-export default function Reflection({ q, onSaved, className = '' }) {
+import ReflectionV2 from './ReflectionV2'
+
+/** 依題目檔版本選擇介面：v2 = 3 日一期焦點市場制；舊檔沿用原介面 */
+export default function Reflection(props) {
+  return props.q?.version === 2 ? <ReflectionV2 {...props} /> : <ReflectionV1 {...props} />
+}
+
+function ReflectionV1({ q, onSaved, className = '' }) {
   const [answers, setAnswers] = useState([])
   const [preds, setPreds] = useState([])
   const [summary, setSummary] = useState(emptySummary)

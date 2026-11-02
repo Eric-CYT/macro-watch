@@ -11,7 +11,7 @@ export const ASSETS = {
   vix: { name: 'VIX' },
 }
 export const DIRS = { up: '↑ 漲', down: '↓ 跌', flat: '— 盤整' }
-export const HORIZONS = [1, 5, 20]
+export const HORIZONS = [1, 3, 5, 20]
 export const CONF = { 1: '低', 2: '中', 3: '高' }
 
 /** 單一預判的實際結果。回傳 null（無資料）、{pending}（未到期）或完整結果 */
@@ -58,7 +58,7 @@ export function flatten(entries, metrics, qIndex) {
       rows.push({
         date, i, q, a: e.answers?.[i] || '', type: e.types?.[i] || (i >= 6 ? 'asset' : i >= 3 ? 'flow' : 'market'),
         pred: p?.dir ? p : null, o, events: e.events?.length ? e.events : evMap.get(date) || [],
-        grade: e.grade, note: e.review, summary: e.summary,
+        grade: e.grade, note: e.review, summary: e.summary, system: e.system, focus: e.focus,
       })
     })
   }
@@ -84,11 +84,30 @@ export function summaryCalls(entries, metrics) {
   for (const [date, e] of Object.entries(entries || {})) {
     const s = e.summary
     if (!s) continue
-    if (s.bias) out.push({ date, kind: '整體方向', asset: 'spx', dir: s.bias === 'bull' ? 'up' : s.bias === 'bear' ? 'down' : 'flat' })
-    ;(s.long || []).forEach((k) => out.push({ date, kind: '看好', asset: k, dir: 'up' }))
-    ;(s.short || []).forEach((k) => out.push({ date, kind: '看壞', asset: k, dir: 'down' }))
+    const h = s.h || 5
+    if (s.bias) out.push({ date, h, kind: '整體方向', asset: 'spx', dir: s.bias === 'bull' ? 'up' : s.bias === 'bear' ? 'down' : 'flat' })
+    ;(s.long || []).forEach((k) => out.push({ date, h, kind: '看好', asset: k, dir: 'up' }))
+    ;(s.short || []).forEach((k) => out.push({ date, h, kind: '看壞', asset: k, dir: 'down' }))
   }
-  return out.map((c) => ({ ...c, o: outcome(metrics, { asset: c.asset, dir: c.dir, h: 5 }, c.date) }))
+  return out.map((c) => ({ ...c, o: outcome(metrics, { asset: c.asset, dir: c.dir, h: c.h }, c.date) }))
+}
+
+/** 系統 vs 你：同一期的判斷，各自的命中率；並看你「不同意系統」時誰比較準 */
+export function systemVsYou(entries, metrics) {
+  const res = { sys: { n: 0, hit: 0 }, you: { n: 0, hit: 0 }, byAgree: {} }
+  const score = (o, acc) => { if (o && !o.pending && o.hit !== null) { acc.n++; if (o.hit) acc.hit++ } }
+  for (const [date, e] of Object.entries(entries || {})) {
+    if (!e.system?.calls) continue
+    const sys = { n: 0, hit: 0 }, you = { n: 0, hit: 0 }
+    e.system.calls.forEach((c) => score(outcome(metrics, { ...c, h: 3 }, date), sys))
+    summaryCalls({ [date]: e }, metrics).forEach((c) => score(c.o, you))
+    ;(e.predictions || []).forEach((p) => p?.dir && score(outcome(metrics, p, date), you))
+    res.sys.n += sys.n; res.sys.hit += sys.hit; res.you.n += you.n; res.you.hit += you.hit
+    const g = e.summary?.agree || 'none'
+    const b = (res.byAgree[g] ||= { sys: { n: 0, hit: 0 }, you: { n: 0, hit: 0 }, days: 0 })
+    b.days++; b.sys.n += sys.n; b.sys.hit += sys.hit; b.you.n += you.n; b.you.hit += you.hit
+  }
+  return res
 }
 
 export function stats(rows, entries, metrics) {
@@ -122,6 +141,7 @@ export function stats(rows, entries, metrics) {
     byEvent: group((r) => (r.events.length ? '事件日' : '一般日')),
     byDir: group((r) => DIRS[r.pred.dir]),
     drivers, grades,
+    svy: systemVsYou(entries, metrics),
     summaries: Object.values(entries || {}).filter((e) => e.summary && (e.summary.theme?.trim() || e.summary.plan?.trim() || e.summary.bias)).length,
     sumCalls: (() => {
       const calls = summaryCalls(entries, metrics)
@@ -170,6 +190,13 @@ export function summaryText(st, label) {
     const sc = st.sumCalls
     lines.push(`寫了 ${st.summaries} 天的總結；總結中的方向與看好/看壞判斷（5 日驗證）已到期 ${sc.n} 個，命中 ${sc.hit} 個（${pct(sc.pct)}）${sc.pending ? `，${sc.pending} 個未到期` : ''}。`)
   }
+  const sv = st.svy
+  if (sv && (sv.sys.n || sv.you.n)) {
+    const p = (x) => (x.n ? `${Math.round((x.hit / x.n) * 100)}%（${x.hit}/${x.n}）` : '—')
+    lines.push(`系統 vs 你（同期判斷）：系統 ${p(sv.sys)}、你 ${p(sv.you)}。`)
+    const d = sv.byAgree.disagree
+    if (d && d.sys.n && d.you.n) lines.push(`你「不同意」系統的 ${d.days} 期中：系統 ${p(d.sys)}、你 ${p(d.you)}——${d.you.hit / d.you.n >= d.sys.hit / d.sys.n ? '你的獨立判斷有價值' : '這些時候系統反而比較準，值得檢討不同意的理由'}。`)
+  }
   if (!st.preds) lines.push('目前還沒有預判紀錄：作答時在每題下方選「我的判斷」，系統才能自動驗證命中率。')
   return lines
 }
@@ -194,11 +221,13 @@ export function aiPrompt(rows, st, label) {
         lines.push(`  - 預判：${ASSETS[r.pred.asset]?.name} ${DIRS[r.pred.dir]}，${r.pred.h} 日，信心${CONF[r.pred.conf || 2]} → ${res}`)
       }
     })
+    if (arr[0].system?.text?.length) lines.push(`- 當期系統資金動向評估：${arr[0].system.text.join(' ')}`)
     const sm = arr[0].summary
     if (sm && (sm.theme || sm.plan || sm.bias)) {
       lines.push(`- 當日總結：主軸「${sm.theme || '—'}」；方向 ${({ bull: '偏多', neutral: '中性', bear: '偏空' })[sm.bias] || '—'}；看好 ${(sm.long || []).map((k) => ASSETS[k]?.name).join('、') || '—'}；看壞 ${(sm.short || []).map((k) => ASSETS[k]?.name).join('、') || '—'}`)
       if (sm.plan) lines.push(`  - 策略：${sm.plan}`)
       if (sm.invalidation) lines.push(`  - 失效條件：${sm.invalidation}`)
+      if (sm.agree) lines.push(`  - 對系統評估：${({ agree: '同意', partial: '部分同意', disagree: '不同意' })[sm.agree]}${sm.disagree ? `（${sm.disagree}）` : ''}`)
     }
     if (arr[0].note) lines.push(`- 事後檢討：${arr[0].note}`)
   }

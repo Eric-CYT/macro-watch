@@ -72,6 +72,8 @@ export default function Review({ metrics, index }) {
           note={`整體方向以美股驗證；看好／看壞以各資產驗證。${st.sumCalls.pending ? `另有 ${st.sumCalls.pending} 個未到期。` : ''}`} />
       </div>
 
+      <SysVsYou sv={st.svy} />
+
       <div className="grid gap-3 xl:grid-cols-3">
         <Panel title="你最常用的解釋框架">
           {st.drivers.length ? (
@@ -147,6 +149,40 @@ function Group({ title, data, note }) {
       {note && <p className="text-[10px] text-muted mt-2">{note}</p>}
     </Panel>
   )
+}
+
+function SysVsYou({ sv }) {
+  if (!sv) return null
+  const p = (x) => (x?.n ? x.hit / x.n : null)
+  const row = (label, a) => (
+    <div className="grid grid-cols-[110px_1fr_1fr] gap-2 items-center text-[12px] py-1 border-b border-line last:border-0">
+      <span className="text-ink2">{label}{a.days ? <span className="text-muted">（{a.days} 期）</span> : null}</span>
+      <Bar label="系統" x={a.sys} />
+      <Bar label="你" x={a.you} />
+    </div>
+  )
+  const AG = { agree: '你同意時', partial: '部分同意時', disagree: '你不同意時', none: '未表態' }
+  return (
+    <Panel title="系統 vs 你（新制：3 個交易日一期）">
+      {sv.sys.n + sv.you.n === 0 ? <Empty>新制作答並到期後，這裡會比較系統的「資金動向評估」與你的判斷誰比較準。</Empty> : (
+        <>
+          {row('全部', sv)}
+          {Object.entries(sv.byAgree).map(([k, a]) => <div key={k}>{row(AG[k] || k, a)}</div>)}
+          <p className="text-[10px] text-muted mt-2">系統判斷 = 評估中的「下一期傾向」（動能規則）；你的判斷 = 總結的方向／看好看壞 + 各題預判。重點看「你不同意時」：若你較準，代表你看到了規則看不到的東西。</p>
+        </>
+      )}
+    </Panel>
+  )
+  function Bar({ label, x }) {
+    const v = p(x)
+    return (
+      <div className="flex items-center gap-2">
+        <span className="w-8 text-muted">{label}</span>
+        <div className="flex-1 h-1.5 bg-bg rounded overflow-hidden">{v != null && <div className="h-full rounded" style={{ width: `${v * 100}%`, background: v >= 0.55 ? 'var(--color-good)' : v < 0.45 ? 'var(--color-critical)' : 'var(--color-warning)' }} />}</div>
+        <span className="num w-16 text-right">{v == null ? '—' : `${Math.round(v * 100)}% ${x.hit}/${x.n}`}</span>
+      </div>
+    )
+  }
 }
 
 const Empty = ({ children }) => <p className="text-[12px] text-muted">{children}</p>
