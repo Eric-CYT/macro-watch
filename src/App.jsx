@@ -6,6 +6,7 @@ import Reflection from './components/Reflection'
 import { loadEntries } from './lib/journal'
 import Journal from './components/Journal'
 import Quality from './components/Quality'
+import Guide from './components/Guide'
 import { TwChips, NetLiq } from './components/Flows'
 import Review from './components/Review'
 import TradeCheck from './components/TradeCheck'
@@ -102,6 +103,8 @@ export default function App() {
         <main className="p-3"><TradeCheck metrics={market.metrics} flows={market.flows} /></main>
       ) : route === 'review' ? (
         <main className="p-3"><Review metrics={market.metrics} index={qIndex} /></main>
+      ) : route === 'guide' ? (
+        <main className="p-3"><Guide /></main>
       ) : route === 'quality' ? (
         <main className="p-3"><Quality market={market} /></main>
       ) : (
@@ -186,7 +189,7 @@ export default function App() {
 
       {pick && M[pick] && <Detail m={M[pick]} onClose={() => setPick(null)} />}
 
-      {!['journal', 'quality', 'review', 'trade', 'reflect', 'matrix'].includes(route) && (
+      {!['journal', 'quality', 'review', 'trade', 'reflect', 'matrix', 'guide'].includes(route) && (
         <nav className="xl:hidden fixed bottom-0 inset-x-0 bg-surface border-t border-line grid grid-cols-4 pb-safe z-40">
           {TABS.map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); scrollTo(0, 0) }}
@@ -203,7 +206,7 @@ function Center({ children }) {
 }
 
 const NAV = [['', '儀表板'], ['reflect', '本期推敲'], ['journal', '推敲日誌'], ['review', '統整驗證'], ['matrix', '連動矩陣'],
-  ['trade', '交易前檢查'], ['quality', '資料驗證']]
+  ['trade', '交易前檢查'], ['quality', '資料驗證'], ['guide', '使用指南']]
 const NAV_KEY = 'mdj.nav.v1'
 function loadNav() {
   try {
