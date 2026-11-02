@@ -6,6 +6,7 @@ import Reflection from './components/Reflection'
 import { loadEntries } from './lib/journal'
 import Journal from './components/Journal'
 import Quality from './components/Quality'
+import { TwChips, NetLiq } from './components/Flows'
 import Review from './components/Review'
 import TradeCheck from './components/TradeCheck'
 import Matrix from './components/Matrix'
@@ -113,6 +114,9 @@ export default function App() {
             <Panel title="原物料與外匯">
               {['copper', 'wti', 'gold', 'dxy', 'usdjpy'].map((k) => <MetricRow key={k} m={M[k]} alert={A(k)} onPick={setPick} />)}
             </Panel>
+            <Panel title="聯準會淨流動性（美元水位）">
+              <NetLiq b={market.flows?.netliq} />
+            </Panel>
             <Events events={market.events} />
           </div>
 
@@ -120,6 +124,9 @@ export default function App() {
           <div className={`${tab === 'market' ? 'flex' : 'hidden'} xl:flex flex-col gap-3 min-w-0`}>
             <Panel title="跨資產資金流向（金屬／原油／美股／台股／加密／美元／美債）">
               <FlowChart metrics={M} />
+            </Panel>
+            <Panel title="台股籌碼：三大法人現貨 ＋ 台指期未平倉">
+              <TwChips inst={market.flows?.tw_inst} txf={market.flows?.txf} />
             </Panel>
             <Panel title="資金熱圖（1 日漲跌）" right={<div className="flex gap-3">
               <MiniIdx m={M.spx} onPick={setPick} /><MiniIdx m={M.sox} onPick={setPick} alert={A('sox')} /></div>}>

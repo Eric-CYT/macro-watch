@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import news as news_mod  # noqa: E402
 import cycle as cycle_mod  # noqa: E402
+import flows as flows_mod  # noqa: E402
 import questions as q_mod  # noqa: E402
 import sources as S  # noqa: E402
 import validate as V  # noqa: E402
@@ -124,6 +125,7 @@ def main():
         "DCOILWTICO": ago(120), "PCOPPUSDM": ago(400), "DEXJPUS": ago(60), "DEXTAUS": ago(60),
         "DEXUSEU": ago(60), "DEXUSUK": ago(60), "DEXCAUS": ago(60), "DEXSDUS": ago(60), "DEXSZUS": ago(60),
         "VIXCLS": ago(60), "SP500": ago(60),
+        "WALCL": ago(1200), "WDTGAL": ago(1200), "RRPONTSYD": ago(1200), "WTREGEN": ago(1200),
         "CPIAUCNS": "2010-01-01", "CPILFENS": "2010-01-01", "PAYEMS": "2010-01-01", "UNRATE": "2010-01-01",
     }
     log("開始抓取 FRED")
@@ -390,6 +392,34 @@ def main():
             heat[g].append({"sym": sym, "name": nm, "last": pts[-1][1] if pts else None,
                             "chg": chg(pts, 1), "chg5": chg(pts, 5), "date": pts[-1][0] if pts else None})
 
+    # ------------------------------------------------------------ 資金籌碼與流動性
+    FL = {}
+    tw_days = [d for d, _ in ((M.get("taiex") or {}).get("history") or [])][-130:]
+    t = time.time()
+    try:
+        cache, n_new, errs = flows_mod.twse_institutional(
+            tw_days, arch / "cache" / "twse_inst.json", max_new=15 if time.time() - T0 < 480 else 2, pause=2.0)
+        FL["tw_inst"] = flows_mod.tw_inst_block(cache)
+        if sum(1 for d in tw_days if d not in cache) > 0:
+            FL["tw_inst"]["note"] += f"；歷史回補中（已 {len(FL['tw_inst']['series'])} 天，每次更新補 15 天）"
+        log(f"✓ 證交所三大法人 新增 {n_new} 天，快取 {len(cache)} 天 ({time.time() - t:.1f}s)")
+        ERRORS.extend(f"證交所三大法人 {e}" for e in errs if "尚未公布" not in e)
+    except Exception as e:  # noqa: BLE001
+        ERRORS.append(f"證交所三大法人: {type(e).__name__}: {str(e)[:120]}")
+    t = time.time()
+    try:
+        cache, errs = flows_mod.taifex_update(arch / "cache" / "taifex_txf.json")
+        second = safe("期交所 OpenAPI", flows_mod.taifex_openapi_check)
+        FL["txf"] = flows_mod.txf_block(cache, second)
+        log(f"✓ 期交所台指期法人 快取 {len(cache)} 天 ({time.time() - t:.1f}s)")
+        ERRORS.extend(f"期交所 {e}" for e in errs)
+    except Exception as e:  # noqa: BLE001
+        ERRORS.append(f"期交所: {type(e).__name__}: {str(e)[:120]}")
+    DTS = safe("財政部 DTS TGA", flows_mod.tga_dts, ago(120))
+    FL["netliq"] = flows_mod.netliq_block(F.get("WALCL"), F.get("WDTGAL"), F.get("RRPONTSYD"), F.get("WTREGEN"), DTS)
+    for k, b in FL.items():
+        b.setdefault("key", k)
+
     # ------------------------------------------------------------ 沿用上一版（單項失敗時）
     prev = None
     pages = os.environ.get("PAGES_URL")
@@ -405,6 +435,9 @@ def main():
         for k, m in macro.items():
             if m["status"] == "missing" and k in prev.get("macro", {}):
                 macro[k] = {**prev["macro"][k], "status": "stale"}
+        for k in ("tw_inst", "txf", "netliq"):
+            if (k not in FL or FL[k]["status"] == "missing") and k in prev.get("flows", {}):
+                FL[k] = {**prev["flows"][k], "status": "stale", "note": "本次抓取失敗，沿用上一版資料"}
 
     # ------------------------------------------------------------ 新聞
     news = news_mod.fetch_news()
@@ -472,11 +505,11 @@ def main():
     shutil.copytree(qdir, out / "questions", dirs_exist_ok=True)
 
     # ------------------------------------------------------------ 輸出
-    allm = list(M.values()) + list(macro.values())
+    allm = list(M.values()) + list(macro.values()) + list(FL.values())
     summary = {s: sum(1 for m in allm if m["status"] == s) for s in ("ok", "warn", "single", "fail", "stale", "missing")}
     market = {
         "updated": now.isoformat(timespec="seconds"),
-        "metrics": M, "macro": macro, "heatmap": heat,
+        "metrics": M, "macro": macro, "flows": FL, "heatmap": heat,
         "intraday": {"vix": (vix_i or {}).get("points") or [], "btc": btc_i or []},
         "events": upcoming[:20],
         "quality": {"summary": summary, "errors": ERRORS + [f"新聞 {e}" for e in news["errors"]]},
@@ -490,6 +523,8 @@ def main():
                     | {"tail": (m.get("history") or [])[-3:]} for k, m in M.items()},
         "macro": {k: {"name": m.get("name"), "status": m.get("status"), "checks": m.get("checks"),
                       "tail": (m.get("series") or [])[-3:]} for k, m in macro.items()},
+        "flows": {k: {"name": b.get("name"), "status": b.get("status"), "checks": b.get("checks"), "note": b.get("note"),
+                      "n": len(b.get("series") or []), "tail": (b.get("series") or [])[-3:]} for k, b in FL.items()},
         "heatmap_missing": {g: [x["sym"] for x in v if x["chg"] is None] for g, v in heat.items()},
         "heatmap_dates": {g: sorted({x["date"] for x in v if x["date"]}) for g, v in heat.items()},
     }

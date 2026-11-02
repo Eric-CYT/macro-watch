@@ -212,6 +212,19 @@ function Baseline({ bt, you }) {
           </tbody>
         </table>
       </div>
+      {(() => {
+        const st = bt[1]?.starts || {}
+        const vals = Object.values(st).sort()
+        const common = vals[Math.floor(vals.length / 2)]
+        const odd = Object.entries(st).filter(([, d]) => d !== common)
+        const sys3 = f(bt[3]?.res?.sys)
+        return (
+          <div className="text-[10px] text-muted mt-1 space-y-0.5">
+            {odd.length > 0 && <p>回測起點：多數市場自 {common}；{odd.map(([a, d]) => `${ASSETS[a]?.name || a} 自 ${d}`).join('、')}（{odd.some(([a]) => a === 'btc') ? '加密以日曆日計，400 筆歷史涵蓋的期間較短' : '歷史資料長度不同'}）。</p>}
+            {sys3 != null && sys3 <= 0.52 && <p className="text-warning">系統規則 3 日回測僅 {Math.round(sys3 * 100)}%，沒有預測優勢：本期推敲的「系統下一期傾向」只用來描述現況，不要當成方向訊號。</p>}
+          </div>
+        )
+      })()}
       <details className="mt-2">
         <summary className="text-[11px] text-s1 cursor-pointer">各市場 3 日基準（看哪個市場適合順勢、哪個適合逆勢）</summary>
         <table className="w-full text-[12px] mt-1">

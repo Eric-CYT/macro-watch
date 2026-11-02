@@ -52,6 +52,44 @@ def test_ism_business_day():
     assert S._roc_to_iso("1151030") == "2026-10-30"
 
 
+BFI_SAMPLE = {"stat": "OK", "date": "20261030", "title": "115年10月30日 三大法人買賣金額統計表",
+              "fields": ["單位名稱", "買進金額", "賣出金額", "買賣差額"],
+              "data": [["自營商(自行買賣)", "3,000,000,000", "2,500,000,000", "500,000,000"],
+                       ["自營商(避險)", "10,000,000,000", "11,200,000,000", "-1,200,000,000"],
+                       ["投信", "6,000,000,000", "4,000,000,000", "2,000,000,000"],
+                       ["外資及陸資(不含外資自營商)", "150,000,000,000", "162,345,678,900", "-12,345,678,900"],
+                       ["外資自營商", "10,000,000", "4,000,000", "6,000,000"],
+                       ["合計", "169,010,000,000", "180,049,678,900", "-11,039,678,900"]]}
+
+TAIFEX_CSV = ("日期,商品名稱,身份別,多方交易口數,多方交易契約金額(千元),空方交易口數,空方交易契約金額(千元),"
+              "多空交易口數淨額,多空交易契約金額淨額(千元),多方未平倉口數,多方未平倉契約金額(千元),"
+              "空方未平倉口數,空方未平倉契約金額(千元),多空未平倉口數淨額,多空未平倉契約金額淨額(千元)\n"
+              "2026/06/18,臺股期貨,自營商,5782,53658901,5728,53248379,54,410522,4252,39855646,4189,39276059,63,579587\n"
+              "2026/06/18,臺股期貨,投信,1880,17543845,366,3415539,1514,14128307,63555,594264672,4958,46359283,58597,547905389\n"
+              "2026/06/18,臺股期貨,外資,63627,590169033,63404,588143609,223,2025425,10085,94303824,78422,733360226,-68337,-639056402\n"
+              "2026/06/18,小型臺指期貨,外資,1,1,1,1,0,0,1,1,1,1,-999,-999\n")
+
+
+def test_flows_parsers():
+    import flows as FLW
+    p = FLW._bfi_parse(BFI_SAMPLE)
+    assert p["foreign"] == -12_345_678_900 and p["foreign_dealer"] == 6_000_000
+    assert p["dealer"] == -700_000_000 and p["trust"] == 2_000_000_000 and p["total"] == -11_039_678_900
+    b = FLW.tw_inst_block({"2026-10-30": p})
+    assert b["series"][-1] == ["2026-10-30", -123.4, 20.0, -7.0, -110.4], b["series"][-1]
+    assert b["checks"][0]["status"] == "ok", b["checks"]
+    assert FLW._bfi_parse({"stat": "很抱歉，沒有符合條件的資料!"}) is None
+    t = FLW._taifex_parse(TAIFEX_CSV)
+    # 期交所網頁 2026/06/18：外資 TX 未平倉淨額 -68,337 口、投信 58,597、自營商 63（小台不可混入）
+    assert t == {"2026-06-18": {"dealer": 63, "trust": 58597, "foreign": -68337}}, t
+    # 淨流動性單位：WALCL/WDTGAL 百萬、RRP 十億
+    nl = FLW.netliq_block([["2026-10-07", 6_750_000.0]], [["2026-10-07", 880_000.0]],
+                          [["2026-10-06", 2.0], ["2026-10-08", 9.0]], [["2026-10-07", 870.0]],
+                          [["2026-10-07", 880_500.0]])
+    assert nl["series"][-1] == ["2026-10-07", 5.868, 6.75, 0.88, 0.002], nl["series"]
+    assert [c["status"] for c in nl["checks"]] == ["ok", "ok"], nl["checks"]
+
+
 def _walk(start, n, drift=0.0, vol=0.01, seed=1, rate=False):
     rnd = random.Random(seed)
     d0 = date.fromisoformat("2026-11-02") - timedelta(days=int(n * 1.45))
@@ -116,6 +154,12 @@ def install_mocks():
             return _monthly(130000, 200, 130, 80, 3)
         if sid == "UNRATE":
             return [[d, round(4 + math.sin(i / 20), 1)] for i, (d, _) in enumerate(_monthly(0, 200, 0, 0, 4))]
+        if sid in ("WALCL", "WDTGAL", "WTREGEN"):
+            wk = [d for d, _ in _walk(1, 900) if date.fromisoformat(d).weekday() == 2]
+            lv = {"WALCL": 6_700_000.0, "WDTGAL": 880_000.0, "WTREGEN": 880.0}[sid]
+            return [[d, round(lv * (1 + 0.02 * math.sin(i / 7)), 1)] for i, d in enumerate(wk)]
+        if sid == "RRPONTSYD":
+            return [[d, round(abs(5 * math.sin(i / 30)), 3)] for i, (d, _) in enumerate(_walk(1, 900))]
         if sid == "PCOPPUSDM":
             return [["2026-09-01", 10900.0]]
         mp = {"DCOILWTICO": "CL=F", "DEXJPUS": "JPY=X", "DEXTAUS": "TWD=X", "VIXCLS": "^VIX", "SP500": "^GSPC",
@@ -126,6 +170,47 @@ def install_mocks():
 
     S.yahoo_chart = yahoo_chart
     S.fred = fred
+
+    # ---- 資金籌碼與流動性
+    import flows as FLW
+
+    class _R:
+        def __init__(self, j):
+            self._j = j
+
+        def json(self):
+            return self._j
+
+    real_get = S._get
+
+    def fake_get(url, **kw):
+        if "BFI82U" in url:
+            d = kw["params"]["dayDate"]
+            rnd = random.Random(int(d))
+            f, t_, dl = rnd.gauss(0, 8e9), rnd.gauss(0, 2e9), rnd.gauss(0, 1e9)
+            return _R({"stat": "OK", "fields": ["單位名稱", "買進金額", "賣出金額", "買賣差額"], "data": [
+                ["自營商(自行買賣)", "0", "0", f"{dl:.0f}"], ["投信", "0", "0", f"{t_:.0f}"],
+                ["外資及陸資(不含外資自營商)", "0", "0", f"{f:.0f}"], ["合計", "0", "0", f"{f + t_ + dl:.0f}"]]})
+        if "fiscaldata" in url:
+            return _R({"data": [{"record_date": d, "account_type": "Treasury General Account (TGA) Closing Balance",
+                                 "open_today_bal": str(v), "close_today_bal": "null"} for d, v in fred("WDTGAL")[-20:]]})
+        if "openapi.taifex" in url:
+            raise RuntimeError("mock: 404")
+        return real_get(url, **kw)
+
+    S._get = fake_get
+    FLW.time.sleep = lambda s: None
+
+    def taifex_txf(start, end):
+        out, d = {}, start
+        while d <= end:
+            if d.weekday() < 5:
+                rnd = random.Random(d.toordinal())
+                out[d.isoformat()] = {"foreign": int(rnd.gauss(-30000, 8000)), "trust": int(rnd.gauss(40000, 5000)),
+                                      "dealer": int(rnd.gauss(0, 3000))}
+            d += timedelta(days=1)
+        return out
+    FLW.taifex_txf = taifex_txf
     S.treasury_yields = lambda years_back=2: {"10 Yr": tr10, "2 Yr": tr2}
     S.binance_klines = lambda sym="BTCUSDT", interval="1d", limit=730: (
         yahoo_chart("BTC-USD")["points"] if interval == "1d" else
@@ -172,6 +257,13 @@ def test_full_pipeline(sample_out=None):
         assert m["metrics"]["dxy"]["checks"][0]["status"] in ("ok", "warn")
         for k in ("cpi", "core", "nfp", "unrate", "ism"):
             assert m["macro"][k]["series"], k
+        FLx = m["flows"]
+        assert len(FLx["tw_inst"]["series"]) == 15 and FLx["tw_inst"]["checks"][0]["status"] == "ok" \
+            and FLx["tw_inst"]["status"] == "single", FLx["tw_inst"]
+        assert len(FLx["txf"]["series"]) > 100 and FLx["txf"]["checks"][0]["status"] == "single"
+        nl = FLx["netliq"]
+        assert nl["series"] and 5 < nl["series"][-1][1] < 7 and nl["checks"][0]["status"] == "ok", nl["checks"]
+        print("淨流動性最新：", nl["series"][-1], "｜法人：", FLx["tw_inst"]["series"][-1])
         qi = json.loads((out / "questions" / "index.json").read_text())
         q = json.loads((out / "questions" / f"{qi[-1]['d']}.json").read_text())
         assert q["version"] == 2 and len(q["questions"]) == 6, (q.get("version"), len(q["questions"]))
@@ -194,6 +286,7 @@ if __name__ == "__main__":
     test_dxy_formula()
     test_compare()
     test_ism_business_day()
+    test_flows_parsers()
     sample = None
     if "--sample" in sys.argv:
         sample = str(Path(__file__).resolve().parent.parent / "public" / "data")

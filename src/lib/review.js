@@ -83,10 +83,11 @@ export function backtest(metrics, assets, horizons = [1, 3, 5, 20]) {
   const out = {}
   const add = (o, k, hit) => { (o[k] ||= { n: 0, hit: 0 }); o[k].n++; if (hit) o[k].hit++ }
   for (const hz of horizons) {
-    const res = {}, byAsset = {}
+    const res = {}, byAsset = {}, starts = {}
     for (const a of assets) {
       const m = metrics?.[a]; const h = m?.history
       if (!h || h.length < 61 + hz * 2 + 5) continue
+      starts[a] = h[61 + hz][0]
       const rate = !!m.rate
       const chg = (i, j) => (rate ? (h[j][1] - h[i][1]) * 100 : (h[j][1] / h[i][1] - 1) * 100)
       for (let t = 61 + hz; t + hz < h.length; t++) {
@@ -108,7 +109,7 @@ export function backtest(metrics, assets, horizons = [1, 3, 5, 20]) {
       }
     }
     const span = (() => { const h = metrics?.spx?.history; return h ? `${h[61][0]} → ${h.at(-1)[0]}` : '' })()
-    out[hz] = { res, byAsset, span }
+    out[hz] = { res, byAsset, span, starts }
   }
   return out
 }

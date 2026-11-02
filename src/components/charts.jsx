@@ -5,9 +5,9 @@ import {
 } from 'recharts'
 import { fmt } from '../lib/util'
 
-const AX = { stroke: '#8d8c84', fontSize: 11, tickLine: false, axisLine: { stroke: '#33332f' } }
-const GRID = <CartesianGrid stroke="#2a2a27" strokeDasharray="0" vertical={false} />
-const TT = {
+export const AX = { stroke: '#8d8c84', fontSize: 11, tickLine: false, axisLine: { stroke: '#33332f' } }
+export const GRID = <CartesianGrid stroke="#2a2a27" strokeDasharray="0" vertical={false} />
+export const TT = {
   contentStyle: { background: '#232321', border: '1px solid #33332f', borderRadius: 8, fontSize: 12, color: '#f0efec' },
   labelStyle: { color: '#c3c2b7' },
   cursor: { stroke: '#8d8c84', strokeWidth: 1 },

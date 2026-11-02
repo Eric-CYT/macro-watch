@@ -2,7 +2,7 @@ import { Panel, CheckLine } from './bits'
 import { STATUS, twTime } from '../lib/util'
 
 export default function Quality({ market }) {
-  const rows = [...Object.values(market.metrics), ...Object.values(market.macro)]
+  const rows = [...Object.values(market.metrics), ...Object.values(market.macro), ...Object.values(market.flows || {})]
   const sum = market.quality.summary
   return (
     <div className="space-y-3">
