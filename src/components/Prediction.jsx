@@ -5,7 +5,8 @@ const chip = (on) => `text-[11px] px-1.5 py-0.5 rounded border ${on ? 'bg-s1 bor
 /** 每題下方的「我的判斷（選填）」 */
 export function PredictionPicker({ value, onChange, suggest = [], defaultH = 5 }) {
   const v = value || {}
-  const set = (patch) => onChange({ asset: v.asset || suggest[0] || 'spx', h: v.h || defaultH, conf: v.conf || 2, ...v, ...patch })
+  // t = 設定當下的時間：驗證以「此刻已知的最後收盤」起算，避免先看走勢再作答
+  const set = (patch) => onChange({ asset: v.asset || suggest[0] || 'spx', h: v.h || defaultH, conf: v.conf || 2, ...v, ...patch, t: new Date().toISOString() })
   const assetKeys = [...new Set([...suggest, ...Object.keys(ASSETS)])]
   return (
     <div className="flex flex-wrap items-center gap-1 mt-1">
@@ -33,11 +34,11 @@ export function OutcomeBadge({ metrics, pred, date }) {
   const name = ASSETS[pred.asset]?.name || pred.asset
   const head = `${name} ${DIRS[pred.dir]}・${pred.h}日・信心${CONF[pred.conf || 2]}`
   if (!o) return <Tag c="var(--color-muted)">{head} → 無行情資料</Tag>
-  if (o.pending) return <Tag c="var(--color-muted)">⏳ {head} → 還差 {o.left} 個交易日到期</Tag>
+  if (o.pending) return <Tag c="var(--color-muted)">⏳ {head} → 自 {o.from} 收盤起算，還差 {o.left} 個交易日到期</Tag>
   if (o.hit === null) return <Tag c="var(--color-muted)">○ {head} → 實際 {fmtMove(o)}（{o.z.toFixed(1)}σ，波動太小不計）</Tag>
   return (
     <Tag c={o.hit ? 'var(--color-good)' : 'var(--color-critical)'}>
-      {o.hit ? '✓ 命中' : '✗ 落空'}｜{head} → 實際 {fmtMove(o)}（{o.z > 0 ? '+' : ''}{o.z.toFixed(1)}σ，{o.from}→{o.to}）
+      {o.hit ? '✓ 命中' : '✗ 落空'}｜{head} → 實際 {fmtMove(o)}（{o.z > 0 ? '+' : ''}{o.z.toFixed(1)}σ，{o.from}→{o.to}{o.basis === 'date' ? '・舊紀錄以題目日起算' : ''}）
     </Tag>
   )
 }

@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Panel } from './bits'
 import { loadEntries } from '../lib/journal'
-import { flatten, stats, summaryText, aiPrompt, ASSETS, DIRS, CONF, fmtMove } from '../lib/review'
+import { flatten, stats, summaryText, aiPrompt, ASSETS, DIRS, CONF, fmtMove, backtest, wilson } from '../lib/review'
+import { InfoTip } from './Matrix'
+
+const BT_ASSETS = ['dxy', 'gold', 'btc', 'spx', 'taiex', 'us10y', 'wti']
 
 const PERIODS = [[7, '近 7 天'], [30, '近 30 天'], [90, '近 90 天'], [0, '全部']]
 const pct = (x) => (x == null ? '—' : `${Math.round(x * 100)}%`)
@@ -20,6 +23,7 @@ export default function Review({ metrics, index }) {
   const rows = useMemo(() => flatten(entries, metrics, index), [entries, metrics, index])
   const st = useMemo(() => stats(rows, entries, metrics), [rows, entries, metrics])
   const summary = useMemo(() => summaryText(st, label), [st, label])
+  const bt = useMemo(() => backtest(metrics, BT_ASSETS), [metrics])
 
   const copyAI = async () => {
     const text = aiPrompt(rows, st, label)
@@ -47,6 +51,15 @@ export default function Review({ metrics, index }) {
           <Kpi label="命中率" v={pct(st.overall.pct)} big
             c={st.overall.pct == null ? undefined : st.overall.pct >= 0.55 ? 'var(--color-good)' : st.overall.pct < 0.45 ? 'var(--color-critical)' : 'var(--color-warning)'} />
         </div>
+        {st.quality && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+            <Kpi label={<span className="flex items-center gap-1">Brier 分數<InfoTip title="Brier 分數（信心校準）">把你選的信心換算成機率（低 55%、中 65%、高 80%），計算與實際結果的平方誤差平均。越低越好：0.25 = 擲硬幣水準，低於 0.20 代表信心校準良好；高於 0.25 代表信心常常給錯（例如高信心卻落空）。</InfoTip></span>}
+              v={st.quality.brier.toFixed(3)} c={st.quality.brier < 0.2 ? 'var(--color-good)' : st.quality.brier > 0.25 ? 'var(--color-critical)' : 'var(--color-warning)'} sub="0.25 = 擲硬幣" />
+            <Kpi label={<span className="flex items-center gap-1">幅度加權分數<InfoTip title="幅度加權分數">命中加上該次移動的 |σ|、落空扣掉 |σ|（單次最多 3），再取平均。大行情判斷對的分數高；只猜對小波動、卻錯過大行情，分數會是負的。&gt; 0 代表你在「重要的移動」上判斷正確較多。</InfoTip></span>}
+              v={`${st.quality.weighted > 0 ? '+' : ''}${st.quality.weighted.toFixed(2)}`} c={st.quality.weighted > 0 ? 'var(--color-good)' : 'var(--color-critical)'} sub="> 0 為佳" />
+            <Kpi label="以提交時間起算" v={`${st.quality.submitBased}/${st.quality.n}`} sub="其餘為舊紀錄（題目日起算）" />
+          </div>
+        )}
         <div className="mt-3 p-3 rounded-lg bg-surface2 text-[13px] text-ink space-y-1.5 leading-relaxed">
           {summary.map((l, i) => <p key={i}>{i === 0 ? '📋 ' : '• '}{l}</p>)}
         </div>
@@ -72,6 +85,7 @@ export default function Review({ metrics, index }) {
           note={`整體方向以美股驗證；看好／看壞以各資產驗證。${st.sumCalls.pending ? `另有 ${st.sumCalls.pending} 個未到期。` : ''}`} />
       </div>
 
+      <Baseline bt={bt} you={st.youByH} />
       <SysVsYou sv={st.svy} />
 
       <div className="grid gap-3 xl:grid-cols-3">
@@ -147,6 +161,72 @@ function Group({ title, data, note }) {
         </ul>
       ) : <Empty>尚無預判紀錄</Empty>}
       {note && <p className="text-[10px] text-muted mt-2">{note}</p>}
+    </Panel>
+  )
+}
+
+function Baseline({ bt, you }) {
+  const COLS = [['up', '永遠看漲'], ['mom', '動能（順勢）'], ['rev', '反轉（逆勢）'], ['sys', '系統規則']]
+  const f = (r) => (r?.n ? r.hit / r.n : null)
+  const P = (x) => (x == null ? '—' : `${Math.round(x * 100)}%`)
+  const span = bt[1]?.span
+  return (
+    <Panel title={<span className="flex items-center gap-1.5">你 vs 基準線（歷史回測）<InfoTip title="為什麼要比基準線">
+      命中率要和「最簡單的規則」比才有意義。例如市場長期向上，「永遠看漲」本身就可能有 55%；你要穩定高於所有基準，才代表判斷有真正的優勢。
+      回測期間的每個交易日都套用規則，判定方式（σ 與 0.25σ 雜訊門檻）和你的預判完全相同。相鄰樣本期間重疊，實際的不確定性比數字顯示的大。</InfoTip></span>}
+      right={<span className="text-[11px] text-muted num">7 個市場・{span}</span>}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead className="text-muted"><tr>
+            <th className="text-left font-normal py-1">預判期間</th>
+            <th className="font-normal px-2 text-ink">你</th>
+            {COLS.map(([k, l]) => <th key={k} className="font-normal px-2">{l}</th>)}
+            <th className="text-left font-normal px-2">判讀</th>
+          </tr></thead>
+          <tbody>
+            {[1, 3, 5, 20].map((hz) => {
+              const r = bt[hz]?.res || {}
+              const y = you?.[hz]
+              const yp = f(y), ci = y?.n ? wilson(y.hit, y.n) : null
+              const best = Math.max(...COLS.map(([k]) => f(r[k]) ?? 0))
+              let verdict = '尚無預判', vc = 'var(--color-muted)'
+              if (y?.n) {
+                if (y.n < 20) { verdict = `樣本 ${y.n} 筆，至少 20 筆才有參考價值`; vc = 'var(--color-muted)' }
+                else if (ci.lo > best) { verdict = '顯著優於所有基準 ✓'; vc = 'var(--color-good)' }
+                else if (yp > best) { verdict = '高於基準，但仍在誤差範圍內'; vc = 'var(--color-warning)' }
+                else { verdict = '未勝過最佳基準'; vc = 'var(--color-critical)' }
+              }
+              return (
+                <tr key={hz} className="border-t border-line">
+                  <td className="py-1.5">{hz} 日</td>
+                  <td className="px-2 text-center num text-ink">{P(yp)}{y?.n ? <span className="block text-[10px] text-muted">{y.hit}/{y.n}・{P(ci.lo)}–{P(ci.hi)}</span> : null}</td>
+                  {COLS.map(([k]) => {
+                    const v = f(r[k])
+                    return <td key={k} className={`px-2 text-center num ${v != null && v === best ? 'text-ink font-semibold' : 'text-ink2'}`}>
+                      {P(v)}{r[k]?.n ? <span className="block text-[10px] text-muted">{r[k].n} 筆</span> : null}</td>
+                  })}
+                  <td className="px-2" style={{ color: vc }}>{verdict}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <details className="mt-2">
+        <summary className="text-[11px] text-s1 cursor-pointer">各市場 3 日基準（看哪個市場適合順勢、哪個適合逆勢）</summary>
+        <table className="w-full text-[12px] mt-1">
+          <thead className="text-muted"><tr><th className="text-left font-normal py-1">市場</th>{COLS.map(([k, l]) => <th key={k} className="font-normal px-2">{l}</th>)}</tr></thead>
+          <tbody>
+            {Object.entries(bt[3]?.byAsset || {}).map(([a, r]) => (
+              <tr key={a} className="border-t border-line">
+                <td className="py-1">{ASSETS[a]?.name || a}</td>
+                {COLS.map(([k]) => <td key={k} className="px-2 text-center num">{P(f(r[k]))}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-[10px] text-muted mt-1">「系統規則」= 本期推敲中「系統下一期傾向」：過去 3 日資金流向 |σ| &gt; 0.5 時順勢判斷。利率類的「看漲」指殖利率上升。</p>
+      </details>
     </Panel>
   )
 }

@@ -14,30 +14,117 @@ export const DIRS = { up: '↑ 漲', down: '↓ 跌', flat: '— 盤整' }
 export const HORIZONS = [1, 3, 5, 20]
 export const CONF = { 1: '低', 2: '中', 3: '高' }
 
+/**
+ * 各資產「日收盤」大約何時確定（UTC，距該日 00:00 的小時數）。用來判斷「提交時已經知道哪一天的收盤」。
+ * 取保守值（偏晚）：寧可把起算點往前算一天，也不讓已知的走勢算進預判。
+ */
+const CLOSE_H = {
+  taiex: 5.5,                                   // 台股 13:30 台北
+  spx: 21, sox: 21, vix: 21.5,                  // 美股 16:00 美東（冬令 21:00 UTC）
+  us10y: 21, us02y: 21, spread: 21, hy: 23,     // 財政部收盤殖利率、FRED 利差
+  dxy: 22, usdjpy: 22, usdtwd: 22,              // 外匯日 K 以紐約 17:00 結束
+  gold: 22, wti: 22, copper: 22,                // CME 期貨日 K 至 17:00 美東
+  btc: 24,                                      // Binance 日 K 以 UTC 00:00 切日
+}
+export function closeTime(asset, d) { return Date.parse(`${d}T00:00:00Z`) + (CLOSE_H[asset] ?? 22) * 3600e3 }
+
+/** 起算點：有提交時間 → 提交當下最後一根已確定的收盤；舊紀錄沒有時間 → 題目日期的收盤 */
+function baseIndex(h, asset, pred, date) {
+  if (pred.t) {
+    const T = Date.parse(pred.t)
+    for (let i = h.length - 1; i >= 0; i--) if (closeTime(asset, h[i][0]) <= T) return i
+    return -1
+  }
+  for (let i = h.length - 1; i >= 0; i--) if (h[i][0] <= date) return i
+  return -1
+}
+
+/** 波動基準：起算日前 60 日的日變動標準差 */
+function dailySd(h, base, rate) {
+  const d = []
+  for (let i = Math.max(1, base - 60); i <= base; i++) d.push(rate ? (h[i][1] - h[i - 1][1]) * 100 : Math.log(h[i][1] / h[i - 1][1]) * 100)
+  const mu = d.reduce((s, x) => s + x, 0) / (d.length || 1)
+  return Math.sqrt(d.reduce((s, x) => s + (x - mu) ** 2, 0) / (d.length || 1))
+}
+
+/** 判定：漲/跌需移動超過 0.25σ 才計分（避免雜訊算命中）；盤整 = |z| < 0.5 */
+function judge(dir, z) {
+  const noise = dir !== 'flat' && Math.abs(z) <= 0.25
+  const hit = dir === 'up' ? z > 0.25 : dir === 'down' ? z < -0.25 : Math.abs(z) < 0.5
+  return { hit: noise ? null : hit, noise }
+}
+
 /** 單一預判的實際結果。回傳 null（無資料）、{pending}（未到期）或完整結果 */
 export function outcome(metrics, pred, date) {
   const m = metrics?.[pred?.asset]
   const h = m?.history
   if (!pred?.dir || !h?.length) return null
-  let base = -1
-  for (let i = h.length - 1; i >= 0; i--) if (h[i][0] <= date) { base = i; break }
+  const base = baseIndex(h, pred.asset, pred, date)
   if (base < 0) return null
   const target = base + pred.h
-  if (target > h.length - 1) return { pending: true, left: target - (h.length - 1) }
+  if (target > h.length - 1) return { pending: true, left: target - (h.length - 1), from: h[base][0] }
   const a = h[base][1], b = h[target][1]
   const rate = !!m.rate
   const move = rate ? (b - a) * 100 : (b / a - 1) * 100
-  // 波動基準：作答日前 60 日的日變動標準差
-  const d = []
-  for (let i = Math.max(1, base - 60); i <= base; i++) d.push(rate ? (h[i][1] - h[i - 1][1]) * 100 : Math.log(h[i][1] / h[i - 1][1]) * 100)
-  const mu = d.reduce((s, x) => s + x, 0) / (d.length || 1)
-  const sd = Math.sqrt(d.reduce((s, x) => s + (x - mu) ** 2, 0) / (d.length || 1))
+  const sd = dailySd(h, base, rate)
   const z = sd ? move / (sd * Math.sqrt(pred.h)) : 0
-  // 判定：漲/跌看方向且需超過 0.25σ（避免雜訊算命中）；盤整 = |z| < 0.5
-  const hit = pred.dir === 'up' ? z > 0.25 : pred.dir === 'down' ? z < -0.25 : Math.abs(z) < 0.5
-  const noise = pred.dir !== 'flat' && Math.abs(z) <= 0.25
-  return { move, z, hit: noise ? null : hit, noise, rate, from: h[base][0], to: h[target][0] }
+  return { move, z, ...judge(pred.dir, z), rate, from: h[base][0], to: h[target][0], basis: pred.t ? 'submit' : 'date' }
 }
+
+/* ====================================================================== 基準線回測
+ * 用 metrics 內的歷史日收盤，對每個交易日套用簡單規則，計算「若一直用這條規則」的命中率。
+ *   永遠看漲：每天都猜漲（利率類 = 殖利率上升）
+ *   動能：猜和「過去 N 日」同方向
+ *   反轉：猜和「過去 N 日」反方向
+ *   系統規則：本系統「下一期傾向」— 過去 3 日 |σ| > 0.5 時順勢（只有 3 日期）
+ * 判定方式與你的預判完全相同（同一套 σ 與 0.25σ 雜訊門檻）。相鄰樣本期間重疊，信賴區間會略為低估。
+ */
+export function backtest(metrics, assets, horizons = [1, 3, 5, 20]) {
+  const out = {}
+  const add = (o, k, hit) => { (o[k] ||= { n: 0, hit: 0 }); o[k].n++; if (hit) o[k].hit++ }
+  for (const hz of horizons) {
+    const res = {}, byAsset = {}
+    for (const a of assets) {
+      const m = metrics?.[a]; const h = m?.history
+      if (!h || h.length < 61 + hz * 2 + 5) continue
+      const rate = !!m.rate
+      const chg = (i, j) => (rate ? (h[j][1] - h[i][1]) * 100 : (h[j][1] / h[i][1] - 1) * 100)
+      for (let t = 61 + hz; t + hz < h.length; t++) {
+        const sd = dailySd(h, t, rate)
+        if (!sd) continue
+        const z = chg(t, t + hz) / (sd * Math.sqrt(hz))
+        if (Math.abs(z) <= 0.25) continue // 雜訊：漲跌規則都不計分
+        const past = chg(t - hz, t)
+        const rules = { up: 'up', mom: past > 0 ? 'up' : 'down', rev: past > 0 ? 'down' : 'up' }
+        if (hz === 3) {
+          const z3 = chg(t - 3, t) / (sd * Math.sqrt(3))
+          if (Math.abs(z3) > 0.5) rules.sys = z3 > 0 ? 'up' : 'down'
+        }
+        for (const [k, dir] of Object.entries(rules)) {
+          const { hit } = judge(dir, z)
+          add(res, k, hit)
+          ;(byAsset[a] ||= {}); add(byAsset[a], k, hit)
+        }
+      }
+    }
+    const span = (() => { const h = metrics?.spx?.history; return h ? `${h[61][0]} → ${h.at(-1)[0]}` : '' })()
+    out[hz] = { res, byAsset, span }
+  }
+  return out
+}
+
+/** Wilson 95% 信賴區間 */
+export function wilson(hit, n) {
+  if (!n) return null
+  const z = 1.96, p = hit / n
+  const d = 1 + (z * z) / n
+  const c = (p + (z * z) / (2 * n)) / d
+  const w = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d
+  return { lo: Math.max(0, c - w), hi: Math.min(1, c + w) }
+}
+
+/** 信心 → 機率（Brier 分數用） */
+export const CONF_P = { 1: 0.55, 2: 0.65, 3: 0.8 }
 
 export const fmtMove = (o) => (o.rate ? `${o.move > 0 ? '+' : ''}${o.move.toFixed(1)}bp` : `${o.move > 0 ? '+' : ''}${o.move.toFixed(2)}%`)
 
@@ -85,12 +172,12 @@ export function summaryCalls(entries, metrics) {
   for (const [date, e] of Object.entries(entries || {})) {
     const s = e.summary
     if (!s) continue
-    const h = s.h || 5
-    if (s.bias) out.push({ date, h, kind: '整體方向', asset: 'spx', dir: s.bias === 'bull' ? 'up' : s.bias === 'bear' ? 'down' : 'flat' })
-    ;(s.long || []).forEach((k) => out.push({ date, h, kind: '看好', asset: k, dir: 'up' }))
-    ;(s.short || []).forEach((k) => out.push({ date, h, kind: '看壞', asset: k, dir: 'down' }))
+    const h = s.h || 5, t = s.t
+    if (s.bias) out.push({ date, h, t, kind: '整體方向', asset: 'spx', dir: s.bias === 'bull' ? 'up' : s.bias === 'bear' ? 'down' : 'flat' })
+    ;(s.long || []).forEach((k) => out.push({ date, h, t, kind: '看好', asset: k, dir: 'up' }))
+    ;(s.short || []).forEach((k) => out.push({ date, h, t, kind: '看壞', asset: k, dir: 'down' }))
   }
-  return out.map((c) => ({ ...c, o: outcome(metrics, { asset: c.asset, dir: c.dir, h: c.h }, c.date) }))
+  return out.map((c) => ({ ...c, o: outcome(metrics, { asset: c.asset, dir: c.dir, h: c.h, t: c.t }, c.date) }))
 }
 
 /** 系統 vs 你：同一期的判斷，各自的命中率；並看你「不同意系統」時誰比較準 */
@@ -135,6 +222,16 @@ export function stats(rows, entries, metrics) {
     days: days.length, streak, answered: answers.length, total: rows.length,
     preds: preds.length, pending: preds.filter((r) => r.o?.pending).length,
     overall: rate(preds),
+    quality: (() => {
+      const done = preds.filter((r) => r.o && !r.o.pending && r.o.hit !== null)
+      if (!done.length) return null
+      const brier = done.filter((r) => r.pred.dir !== 'flat')
+        .reduce((s, r) => s + (CONF_P[r.pred.conf || 2] - (r.o.hit ? 1 : 0)) ** 2, 0) / Math.max(1, done.filter((r) => r.pred.dir !== 'flat').length)
+      const weighted = done.reduce((s, r) => s + (r.o.hit ? 1 : -1) * Math.min(Math.abs(r.o.z), 3), 0) / done.length
+      const submitBased = done.filter((r) => r.o.basis === 'submit').length
+      return { brier, weighted, n: done.length, submitBased }
+    })(),
+    youByH: Object.fromEntries([1, 3, 5, 20].map((hz) => [hz, rate(preds.filter((r) => r.pred.h === hz))])),
     byAsset: group((r) => ASSETS[r.pred.asset]?.name || r.pred.asset),
     byType: group((r) => ({ flow: '資金流向題', asset: '美元/黃金/加密題' }[r.type] || '市場推敲題')),
     byH: group((r) => `${r.pred.h} 日`),

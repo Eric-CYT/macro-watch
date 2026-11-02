@@ -155,11 +155,11 @@ function PrevReview({ date, metrics }) {
   if (!prev) return null
   const { d, e } = prev
   const sm = e.summary || {}
-  const h = sm.h || 5
+  const h = sm.h || 5, t = sm.t
   const calls = [
-    ...(sm.bias ? [{ who: '你', label: `整體${{ bull: '偏多', bear: '偏空', neutral: '中性' }[sm.bias]}（美股）`, p: { asset: 'spx', dir: sm.bias === 'bull' ? 'up' : sm.bias === 'bear' ? 'down' : 'flat', h } }] : []),
-    ...(sm.long || []).map((k) => ({ who: '你', label: `看好 ${ASSETS[k]?.name}`, p: { asset: k, dir: 'up', h } })),
-    ...(sm.short || []).map((k) => ({ who: '你', label: `看壞 ${ASSETS[k]?.name}`, p: { asset: k, dir: 'down', h } })),
+    ...(sm.bias ? [{ who: '你', label: `整體${{ bull: '偏多', bear: '偏空', neutral: '中性' }[sm.bias]}（美股）`, p: { asset: 'spx', dir: sm.bias === 'bull' ? 'up' : sm.bias === 'bear' ? 'down' : 'flat', h, t } }] : []),
+    ...(sm.long || []).map((k) => ({ who: '你', label: `看好 ${ASSETS[k]?.name}`, p: { asset: k, dir: 'up', h, t } })),
+    ...(sm.short || []).map((k) => ({ who: '你', label: `看壞 ${ASSETS[k]?.name}`, p: { asset: k, dir: 'down', h, t } })),
     ...((e.system?.calls) || []).map((c) => ({ who: '系統', label: `${ASSETS[c.asset]?.name} ${c.asset === 'us10y' ? (c.dir === 'up' ? '殖利率↑' : '殖利率↓') : (c.dir === 'up' ? '↑' : '↓')}`, p: { ...c, h: 3 } })),
   ].map((c) => ({ ...c, o: outcome(metrics, c.p, d) }))
   const done = (who) => calls.filter((c) => c.who === who && c.o && !c.o.pending && c.o.hit !== null)

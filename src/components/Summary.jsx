@@ -12,7 +12,10 @@ export const summaryFilled = (s) => !!(s && (s.theme?.trim() || s.plan?.trim() |
 export function SummaryBox({ value, onChange, readOnly, metrics, date, showAgree }) {
   const v = { ...emptySummary(), ...(value || {}) }
   const H = v.h || SUMMARY_H
-  const set = (patch) => onChange?.({ ...v, ...patch })
+  const set = (patch) => {
+    const touched = 'bias' in patch || 'long' in patch || 'short' in patch
+    onChange?.({ ...v, ...patch, ...(touched ? { t: new Date().toISOString() } : {}) })
+  }
   const toggle = (key, k) => {
     const other = key === 'long' ? 'short' : 'long'
     const on = v[key].includes(k)
@@ -25,9 +28,9 @@ export function SummaryBox({ value, onChange, readOnly, metrics, date, showAgree
     return (
       <div className="space-y-1.5 text-[13px]">
         {v.theme && <p><span className="text-muted">市場主軸：</span>{v.theme}</p>}
-        {v.bias && <p><span className="text-muted">整體方向：</span>{BIAS[v.bias]}　<Verdict metrics={metrics} date={date} pred={{ asset: 'spx', dir: v.bias === 'bull' ? 'up' : v.bias === 'bear' ? 'down' : 'flat', h: H }} label={`以美股 ${H} 日驗證`} /></p>}
-        {v.long.length > 0 && <p><span className="text-muted">看好：</span>{v.long.map((k) => <span key={k} className="mr-2">{ASSETS[k]?.name}<Verdict metrics={metrics} date={date} pred={{ asset: k, dir: 'up', h: H }} /></span>)}</p>}
-        {v.short.length > 0 && <p><span className="text-muted">看壞：</span>{v.short.map((k) => <span key={k} className="mr-2">{ASSETS[k]?.name}<Verdict metrics={metrics} date={date} pred={{ asset: k, dir: 'down', h: H }} /></span>)}</p>}
+        {v.bias && <p><span className="text-muted">整體方向：</span>{BIAS[v.bias]}　<Verdict metrics={metrics} date={date} pred={{ asset: 'spx', dir: v.bias === 'bull' ? 'up' : v.bias === 'bear' ? 'down' : 'flat', h: H, t: v.t }} label={`以美股 ${H} 日驗證`} /></p>}
+        {v.long.length > 0 && <p><span className="text-muted">看好：</span>{v.long.map((k) => <span key={k} className="mr-2">{ASSETS[k]?.name}<Verdict metrics={metrics} date={date} pred={{ asset: k, dir: 'up', h: H, t: v.t }} /></span>)}</p>}
+        {v.short.length > 0 && <p><span className="text-muted">看壞：</span>{v.short.map((k) => <span key={k} className="mr-2">{ASSETS[k]?.name}<Verdict metrics={metrics} date={date} pred={{ asset: k, dir: 'down', h: H, t: v.t }} /></span>)}</p>}
         {v.plan && <p className="whitespace-pre-wrap"><span className="text-muted">策略：</span>{v.plan}</p>}
         {v.invalidation && <p className="whitespace-pre-wrap"><span className="text-muted">失效條件：</span>{v.invalidation}</p>}
         {v.agree && <p><span className="text-muted">對系統評估：</span>{AGREE[v.agree]}{v.disagree && `｜${v.disagree}`}</p>}
