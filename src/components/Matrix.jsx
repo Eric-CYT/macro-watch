@@ -3,6 +3,24 @@ import { Panel } from './bits'
 import {
   STATES, DRIVERS, TARGETS, MATRIX, computeScores, matchScenarios, NO_SCENARIO_NOTE, SCORE_RULE_NOTE,
 } from '../lib/matrixConfig'
+import { matrixEvidence, stockBondCorr, REGIME_TEXT, Z_MIN } from '../lib/matrixStats'
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts'
+import { AX, GRID, TT } from './charts'
+
+const VERDICT = {
+  confirmed: { icon: '✓', c: 'var(--color-good)', t: '歷史成立（95% 信賴下限 > 50%）' },
+  weak: { icon: '~', c: 'var(--color-warning)', t: '方向對但不顯著' },
+  contradicted: { icon: '✗', c: 'var(--color-critical)', t: '歷史上多數時候相反（< 45%）' },
+  few: { icon: '·', c: 'var(--color-muted)', t: '樣本不足 8 次' },
+  'neutral-ok': { icon: '✓', c: 'var(--color-good)', t: '確實沒有明顯方向（上漲比例 35–65%）' },
+  'neutral-biased': { icon: '✗', c: 'var(--color-critical)', t: '標為中性，但歷史上有明顯方向' },
+}
+function Ev({ c }) {
+  if (!c || c.verdict === 'na') return null
+  const v = VERDICT[c.verdict]
+  const pct = c.rate != null ? `${Math.round(c.rate * 100)}%` : `漲${Math.round((c.upShare ?? 0) * 100)}%`
+  return <span className="block text-[10px] font-normal num" style={{ color: v.c }} title={`${v.t}；樣本 ${c.n} 次`}>{v.icon} {pct}<span className="text-muted">/{c.n}</span></span>
+}
 
 const KEY = 'mdj.matrix.v1'
 // 本頁燈號依需求：> 0 綠、< 0 紅、= 0 灰
@@ -49,6 +67,10 @@ export default function Matrix({ metrics }) {
 
   const scores = useMemo(() => computeScores(states), [states])
   const scen = useMemo(() => matchScenarios(states), [states])
+  const [win, setWin] = useState(250)
+  const evid = useMemo(() => matrixEvidence(metrics), [metrics])
+  const ev = evid[win]?.cells || {}
+  const sb = useMemo(() => stockBondCorr(metrics), [metrics])
 
   // 選填：依最新收盤帶入（各指標 N 日漲跌的正負）
   const autofill = () => {
@@ -143,7 +165,8 @@ export default function Matrix({ metrics }) {
                     <li key={p.driver.key} className="flex items-center justify-between gap-2">
                       <span className="text-ink2 flex items-center gap-1">{p.driver.name.split(' ')[0]} {STATES[p.state]}
                         <InfoTip title={`${p.driver.name} ${STATES[p.state]} → ${t.name} ${sign(p.value)}`}>{p.note}</InfoTip></span>
-                      <span className="num font-semibold" style={{ color: p.value == null ? GRAY : sc(p.value) }}>{sign(p.value)}</span>
+                      <span className="num font-semibold text-right" style={{ color: p.value == null ? GRAY : sc(p.value) }}>{sign(p.value)}
+                        <Ev c={ev[p.driver.key]?.[p.state]?.[t.key]} /></span>
                     </li>
                   ))}
                 </ul>
@@ -154,7 +177,11 @@ export default function Matrix({ metrics }) {
       </div>
 
       {/* ── 完整連動矩陣 ── */}
-      <Panel title={<span className="flex items-center gap-1.5">資產連動矩陣<InfoTip title="怎麼看這張表">亮起的列是目前選定的狀態；每格為該驅動指標對資產的影響分數（+1 偏多、-1 偏空、0 中性、N/A 不計）。點右側 (i) 可看每一列的總經邏輯。</InfoTip></span>}>
+      <Panel title={<span className="flex items-center gap-1.5">資產連動矩陣<InfoTip title="怎麼看這張表">亮起的列是目前選定的狀態；每格為該驅動指標對資產的影響分數（+1 偏多、-1 偏空、0 中性、N/A 不計）。點右側 (i) 可看每一列的總經邏輯。</InfoTip></span>}
+        right={<div className="flex items-center gap-1"><span className="text-[11px] text-muted">歷史驗證</span>
+          {[[60, '近 60 日'], [250, '近 1 年']].map(([w, l]) => <button key={w} onClick={() => setWin(w)}
+            className={`text-[11px] px-2 py-0.5 rounded ${win === w ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>{l}</button>)}
+          <InfoTip title="格子下方的小字是什麼" align="right">用真實日收盤檢驗這一格：驅動指標單日變化達 {Z_MIN}σ（以近 60 日波動衡量）的日子裡，目標資產同日（台股用隔一個交易日，因收盤時間較早）往矩陣說的方向走的比例，斜線後是樣本次數。✓ 歷史成立、~ 方向對但不顯著、✗ 歷史上多數相反、· 樣本不足。中性（0）格顯示上漲比例。</InfoTip></div>}>
         <div className="overflow-x-auto">
           <table className="w-full text-[12px] border-separate border-spacing-y-0.5">
             <thead className="text-muted">
@@ -174,7 +201,7 @@ export default function Matrix({ metrics }) {
                     <td className="pr-2" style={{ color: st === 'up' ? GREEN : RED }}>{STATES[st]}</td>
                     {TARGETS.map((t) => {
                       const v = row.scores[t.key]
-                      return <td key={t.key} className="px-2 text-center num font-semibold" style={{ color: v == null ? GRAY : sc(v) }}>{sign(v)}</td>
+                      return <td key={t.key} className="px-2 text-center num font-semibold align-top" style={{ color: v == null ? GRAY : sc(v) }}>{sign(v)}<Ev c={ev[d.key]?.[st]?.[t.key]} /></td>
                     })}
                     <td className="px-2 text-center rounded-r"><InfoTip title={`${d.name} ${STATES[st]}`} align="right">{row.note}</InfoTip></td>
                   </tr>
@@ -191,8 +218,62 @@ export default function Matrix({ metrics }) {
             </tbody>
           </table>
         </div>
+        <EvidenceSummary ev={ev} span={evid[win]?.span} />
         <p className="text-[10px] text-muted mt-2">● 為計分燈號資產。矩陣內容與說明文字集中於 src/lib/matrixConfig.js，修改該檔即可更新。本頁燈號依你指定的規則：綠 = 偏多、紅 = 偏空（與儀表板其他頁面的漲跌配色不同）。</p>
       </Panel>
+
+      <StockBond sb={sb} />
     </div>
+  )
+}
+
+function EvidenceSummary({ ev, span }) {
+  const bad = [], good = []
+  for (const d of DRIVERS) for (const st of Object.keys(STATES)) for (const t of TARGETS) {
+    const c = ev[d.key]?.[st]?.[t.key]
+    if (!c) continue
+    const label = `${d.name.split(' ')[0]}${STATES[st]} → ${t.name}`
+    if (c.verdict === 'contradicted' || c.verdict === 'neutral-biased')
+      bad.push(`${label}（矩陣 ${sign(c.expected)}，歷史${c.rate != null ? `只有 ${Math.round(c.rate * 100)}% 相符` : `上漲比例 ${Math.round(c.upShare * 100)}%`}，${c.n} 次）`)
+    else if (c.verdict === 'confirmed') good.push(label)
+  }
+  if (!span) return null
+  return (
+    <div className="mt-3 text-[12px] space-y-1">
+      <p className="text-muted num">驗證期間 {span[0]} → {span[1]}</p>
+      {good.length > 0 && <p><span className="text-good">✓ 歷史成立：</span><span className="text-ink2">{good.join('、')}</span></p>}
+      {bad.length > 0 && <p><span className="text-critical">✗ 與歷史不符：</span><span className="text-ink2">{bad.join('；')}</span></p>}
+      <p className="text-[10px] text-muted">「不符」不代表矩陣邏輯錯，而是這段期間有其他力量主導（例如黃金在股市上漲時也上漲＝流動性同時推升所有資產）。用它來判斷「現在這條傳導鏈還有沒有效」。</p>
+    </div>
+  )
+}
+
+function StockBond({ sb }) {
+  if (!sb?.series?.length) return null
+  const R = REGIME_TEXT[sb.regime]
+  const data = sb.series.slice(-250).map(([d, c]) => ({ d, c: c == null ? null : +c.toFixed(3) }))
+  return (
+    <Panel title={<span className="flex items-center gap-1.5">股債相關性（判斷現在是誰在主導）<InfoTip title="怎麼算">S&amp;P 500 日報酬 與 美債 10Y 價格方向（殖利率下跌＝債券上漲）的 60 日滾動相關係數。&gt; +0.2 股債同向、&lt; −0.2 股債反向，中間為過渡期。</InfoTip></span>}>
+      <div className="flex items-baseline gap-3 flex-wrap">
+        <span className="num text-2xl font-semibold" style={{ color: R?.tone }}>{sb.last == null ? '—' : `${sb.last > 0 ? '+' : ''}${sb.last.toFixed(2)}`}</span>
+        <span className="text-[14px] font-medium" style={{ color: R?.tone }}>{R?.name}</span>
+      </div>
+      <p className="text-[12px] text-ink2 mt-1">{R?.text}</p>
+      <div className="h-40 mt-2">
+        <ResponsiveContainer>
+          <LineChart data={data} margin={{ top: 4, right: 6, left: -4, bottom: 0 }}>
+            {GRID}
+            <XAxis dataKey="d" {...AX} minTickGap={30} tickFormatter={(d) => d.slice(2, 7)} />
+            <YAxis {...AX} domain={[-1, 1]} ticks={[-1, -0.5, -0.2, 0, 0.2, 0.5, 1]} width={40} />
+            <ReferenceLine y={0} stroke="#8d8c84" />
+            <ReferenceLine y={0.2} stroke="#4a4a45" strokeDasharray="4 3" />
+            <ReferenceLine y={-0.2} stroke="#4a4a45" strokeDasharray="4 3" />
+            <Tooltip {...TT} formatter={(v) => [v, '60 日相關']} />
+            <Line isAnimationActive={false} dataKey="c" stroke="#5b8def" dot={false} strokeWidth={1.8} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <p className="text-[10px] text-muted">只用同一天都有收盤的日子計算（共 {sb.n} 組）。相關係數是事後統計，轉折常落後 1–2 週。</p>
+    </Panel>
   )
 }
