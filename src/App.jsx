@@ -8,6 +8,7 @@ import Journal from './components/Journal'
 import Quality from './components/Quality'
 import Review from './components/Review'
 import TradeCheck from './components/TradeCheck'
+import Matrix from './components/Matrix'
 import { computeAlerts, alertFor, LEVEL_C } from './lib/alerts'
 import { getJSON, fmt, fmtChg, dirClass, twTime, timeAgo, STATUS } from './lib/util'
 
@@ -94,6 +95,8 @@ export default function App() {
         <main className="p-3 max-w-6xl mx-auto">
           {today ? <Reflection q={today} metrics={M} onSaved={() => {}} /> : <p className="text-muted">尚未產生本期題目</p>}
         </main>
+      ) : route === 'matrix' ? (
+        <main className="p-3"><Matrix metrics={market.metrics} /></main>
       ) : route === 'trade' ? (
         <main className="p-3"><TradeCheck metrics={market.metrics} /></main>
       ) : route === 'review' ? (
@@ -176,7 +179,7 @@ export default function App() {
 
       {pick && M[pick] && <Detail m={M[pick]} onClose={() => setPick(null)} />}
 
-      {!['journal', 'quality', 'review', 'trade', 'reflect'].includes(route) && (
+      {!['journal', 'quality', 'review', 'trade', 'reflect', 'matrix'].includes(route) && (
         <nav className="xl:hidden fixed bottom-0 inset-x-0 bg-surface border-t border-line grid grid-cols-4 pb-safe z-40">
           {TABS.map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); scrollTo(0, 0) }}
@@ -201,7 +204,7 @@ function Header({ market, route, conv, setConv }) {
   return (
     <header className="sticky top-0 z-30 bg-bg/95 backdrop-blur border-b border-line px-3 py-2 flex items-center gap-2 flex-wrap">
       <h1 className="font-semibold text-[15px] mr-2">Macro & Market Watch</h1>
-      <nav className="flex gap-1 flex-wrap">{link('', '儀表板')}{link('reflect', '本期推敲')}{link('journal', '推敲日誌')}{link('review', '統整驗證')}{link('trade', '交易前檢查')}{link('quality', '資料驗證')}</nav>
+      <nav className="flex gap-1 flex-wrap">{link('', '儀表板')}{link('reflect', '本期推敲')}{link('journal', '推敲日誌')}{link('review', '統整驗證')}{link('matrix', '連動矩陣')}{link('trade', '交易前檢查')}{link('quality', '資料驗證')}</nav>
       <div className="ml-auto flex items-center gap-2 text-[11px] text-ink2">
         <a href="#/quality" className="px-2 py-1 rounded-md bg-surface2" title="交叉比對摘要">
           <span style={{ color: bad ? STATUS.warn.c : STATUS.ok.c }}>{bad ? '⚠' : '✓'}</span> 一致 {s.ok}{bad ? ` · 需留意 ${bad}` : ''} · 單源 {s.single}
