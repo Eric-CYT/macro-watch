@@ -283,7 +283,8 @@ def main():
         days = sorted(set.intersection(*(set(m) for m in fm.values())))
         fred_dxy = [[d, V.dxy_from_fx({k: fm[k][d] for k in fm})] for d in days]
         dxy_checks.append(V.compare_series("DX-Y.NYB", ypts("dxy"), "FRED 聯準會匯率計算", fred_dxy, 0.6,
-                                           note="聯準會為紐約中午報價，ICE 為收盤，容許 0.6%"))
+                                           note="聯準會為紐約中午報價，ICE 為收盤，容許 0.6%；聯準會 H.10 每週一才更新上週資料",
+                                           max_lag_days=14))
     except Exception as e:  # noqa: BLE001
         dxy_checks.append(V.compare(None, None, None, None, 0, note=f"FRED 匯率不足：{e}"))
     h, src, fb = pick("dxy", "Yahoo DX-Y.NYB（ICE）")
@@ -291,11 +292,11 @@ def main():
     h, src, fb = pick("usdjpy", "Yahoo JPY=X")
     M["usdjpy"] = metric("usdjpy", "USD/JPY", "fx", "", h, src, fallback=fb, checks=
                          [V.compare_series("JPY=X", ypts("usdjpy"), "FRED DEXJPUS", F.get("DEXJPUS"), 0.8,
-                                           note="聯準會紐約中午報價")], decimals=2)
+                                           note="聯準會紐約中午報價（H.10 每週一更新）", max_lag_days=14)], decimals=2)
     h, src, fb = pick("usdtwd", "Yahoo TWD=X")
     M["usdtwd"] = metric("usdtwd", "USD/TWD", "fx", "", h, src, fallback=fb, checks=
                          [V.compare_series("TWD=X", ypts("usdtwd"), "FRED DEXTAUS", F.get("DEXTAUS"), 0.8,
-                                           note="聯準會紐約中午報價")], decimals=3)
+                                           note="聯準會紐約中午報價（H.10 每週一更新）", max_lag_days=14)], decimals=3)
 
     # ------------------------------------------------------------ 股市 / 加密 / 波動率
     tw = ypts("taiex")

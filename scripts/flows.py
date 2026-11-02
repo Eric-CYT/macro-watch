@@ -78,20 +78,21 @@ def tw_inst_block(cache, keep=120):
     series = []
     for d in days:
         c = cache[d]
-        f = c["foreign"] + c.get("foreign_dealer", 0)
+        f = c["foreign"]  # 外資自營商已計入自營商，證交所合計列也不重複計入
         series.append([d, round(f / UNIT_YI, 2), round(c["trust"] / UNIT_YI, 2),
                        round(c["dealer"] / UNIT_YI, 2), round(c["total"] / UNIT_YI, 2)])
     checks = []
     if days:
         c = cache[days[-1]]
-        parts = c["foreign"] + c.get("foreign_dealer", 0) + c["trust"] + c["dealer"]
+        parts = c["foreign"] + c["trust"] + c["dealer"]
         checks.append(V.compare("各法人加總", parts / UNIT_YI, "證交所合計列", c["total"] / UNIT_YI, 0.05, "abs",
                                 on=days[-1], note="同一張官方表內部勾稽（單位：億元）；外部對照請看證交所三大法人買賣金額統計表"))
     return {
         "key": "tw_inst", "name": "台股三大法人買賣超", "unit": "億元",
         "source": "證交所 BFI82U 三大法人買賣金額統計表",
         "fields": ["外資", "投信", "自營商", "合計"],
-        "note": "外資＝外資及陸資(不含外資自營商)＋外資自營商；自營商＝自行買賣＋避險",
+        "note": ("外資＝外資及陸資(不含外資自營商)；自營商＝自行買賣＋避險（外資自營商已含在內）。"
+                 "證交所網頁版投信不含「綜合帳戶」，晚間媒體報導的投信數字可能多出數億元"),
         "series": series, "checks": checks,
         # 只有內部勾稽、沒有獨立第二來源 → 誠實標「單一來源」；勾稽不符才升為 warn
         "status": ("warn" if V.worst(checks) == "warn" else "single") if series else "missing",
@@ -247,7 +248,7 @@ def _asof(series_map_sorted, d):
 
 
 def netliq_block(walcl, tga, rrp, wtregen=None, dts=None):
-    """WALCL、WDTGAL：百萬美元（週三水位）；RRPONTSYD、WTREGEN：十億美元 → 統一成「兆美元」"""
+    """WALCL、WDTGAL、WTREGEN：百萬美元（H.4.1）；RRPONTSYD：十億美元（紐約聯準會）→ 統一成「兆美元」"""
     if not walcl or not tga:
         return {"key": "netliq", "name": "聯準會淨流動性", "series": [], "checks": [], "status": "missing",
                 "source": "FRED WALCL − WDTGAL − RRPONTSYD", "unit": "兆美元"}
@@ -269,7 +270,7 @@ def netliq_block(walcl, tga, rrp, wtregen=None, dts=None):
         checks.append(V.compare("FRED WDTGAL", None, "財政部 DTS", None, 1.0, note="財政部 API 本次抓取失敗"))
     if wtregen:
         checks.append(V.compare_series("FRED WDTGAL（週三）", tga, "FRED WTREGEN（週平均）", wtregen, 12.0, "pct",
-                                       scale_b=1000, max_lag_days=10,
+                                       max_lag_days=10,
                                        note="週平均 vs 週三水位，報稅/發債週會有落差，僅作量級檢查（容忍 12%）"))
     return {
         "key": "netliq", "name": "聯準會淨流動性", "unit": "兆美元",
