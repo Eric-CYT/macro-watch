@@ -3,7 +3,7 @@ import { Panel } from './bits'
 import {
   STATES, DRIVERS, TARGETS, MATRIX, computeScores, matchScenarios, NO_SCENARIO_NOTE, SCORE_RULE_NOTE,
 } from '../lib/matrixConfig'
-import { matrixEvidence, stockBondCorr, REGIME_TEXT, Z_MIN } from '../lib/matrixStats'
+import { matrixEvidence, stockBondCorr, REGIME_TEXT, Z_MIN, autoDriverStates } from '../lib/matrixStats'
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts'
 import { AX, GRID, TT } from './charts'
 
@@ -58,35 +58,26 @@ export function InfoTip({ title, children, align = 'left' }) {
 }
 
 export default function Matrix({ metrics }) {
-  const [states, setStatesRaw] = useState(() => {
+  const [manual, setManualRaw] = useState(() => {
     try { return JSON.parse(localStorage.getItem(KEY)) || { dxy: 'up', us10y: 'up', oil: 'up', spx: 'up' } } catch { return { dxy: 'up', us10y: 'up', oil: 'up', spx: 'up' } }
   })
-  const setStates = (x) => { setStatesRaw(x); try { localStorage.setItem(KEY, JSON.stringify(x)) } catch { /* ignore */ } }
-  const [period, setPeriod] = useState(1)
-  const [filled, setFilled] = useState('')
-
+  const [pref, setPrefRaw] = useState(() => {
+    try { return { mode: 'auto', period: 3, ...(JSON.parse(localStorage.getItem(KEY + '.pref')) || {}) } } catch { return { mode: 'auto', period: 3 } }
+  })
+  const setPref = (p) => { const x = { ...pref, ...p }; setPrefRaw(x); try { localStorage.setItem(KEY + '.pref', JSON.stringify(x)) } catch { /* ignore */ } }
+  const setManual = (x) => { setManualRaw(x); try { localStorage.setItem(KEY, JSON.stringify(x)) } catch { /* ignore */ } }
+  const period = pref.period
+  const auto = useMemo(() => autoDriverStates(metrics, period), [metrics, period])
+  const isAuto = pref.mode === 'auto'
+  const states = isAuto ? { ...manual, ...auto.states } : manual
+  // 手動調整任何一項 → 以目前顯示的狀態為基礎切到手動模式
+  const setStates = (x) => { setManual(x); if (isAuto) setPref({ mode: 'manual' }) }
   const scores = useMemo(() => computeScores(states), [states])
   const scen = useMemo(() => matchScenarios(states), [states])
   const [win, setWin] = useState(250)
   const evid = useMemo(() => matrixEvidence(metrics), [metrics])
   const ev = evid[win]?.cells || {}
   const sb = useMemo(() => stockBondCorr(metrics), [metrics])
-
-  // 選填：依最新收盤帶入（各指標 N 日漲跌的正負）
-  const autofill = () => {
-    const next = { ...states }, info = []
-    for (const d of DRIVERS) {
-      const h = metrics?.[d.metric]?.history
-      if (!h || h.length <= period) continue
-      const a = h[h.length - 1 - period][1], b = h[h.length - 1][1]
-      if (b === a) continue
-      next[d.key] = b > a ? 'up' : 'down'
-      const rate = metrics[d.metric].rate
-      info.push(`${d.name} ${rate ? `${((b - a) * 100).toFixed(1)}bp` : `${((b / a - 1) * 100).toFixed(2)}%`}`)
-    }
-    setStates(next)
-    setFilled(`已依最新收盤（${period} 日變化）帶入：${info.join('、')}`)
-  }
 
   return (
     <div className="space-y-3">
@@ -121,30 +112,47 @@ export default function Matrix({ metrics }) {
 
       <div className="grid gap-3 xl:grid-cols-[340px_1fr]">
         {/* ── 手動輸入區 ── */}
-        <Panel title="驅動指標（手動輸入）">
+        <Panel title={isAuto ? '驅動指標（自動判斷）' : '驅動指標（手動）'}>
           <div className="space-y-2">
             {DRIVERS.map((d) => (
               <div key={d.key} className="flex items-center justify-between gap-2">
                 <span className="text-[13px] text-ink flex items-center gap-1.5">{d.name}
                   <InfoTip title={`${d.name} ${STATES[states[d.key]]}`}>{MATRIX[d.key][states[d.key]]?.note}</InfoTip></span>
-                <select value={states[d.key]} onChange={(e) => { setStates({ ...states, [d.key]: e.target.value }); setFilled('') }}
-                  aria-label={d.name}
-                  className="bg-bg border border-line rounded-lg px-2 py-1 text-[13px] font-semibold"
-                  style={{ color: states[d.key] === 'up' ? GREEN : RED }}>
-                  {Object.entries(STATES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                </select>
+<span className="flex items-center gap-2">
+                  {auto.info[d.key] && <span className="text-[11px] num text-muted text-right leading-tight">
+                    {auto.info[d.key].chg > 0 ? '+' : ''}{auto.info[d.key].chg.toFixed(auto.info[d.key].unit === 'bp' ? 1 : 2)}{auto.info[d.key].unit}
+                    {auto.info[d.key].chg === 0 ? <span className="block text-warning">持平（沿用上次）</span> : auto.info[d.key].z != null && <span className="block">{auto.info[d.key].z > 0 ? '+' : ''}{auto.info[d.key].z.toFixed(1)}σ{Math.abs(auto.info[d.key].z) < 0.25 ? '・幅度小' : ''}</span>}
+                  </span>}
+                  <select value={states[d.key]} onChange={(e) => setStates({ ...states, [d.key]: e.target.value })}
+                    aria-label={d.name}
+                    className="bg-bg border border-line rounded-lg px-2 py-1 text-[13px] font-semibold"
+                    style={{ color: states[d.key] === 'up' ? GREEN : RED }}>
+                    {Object.entries(STATES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </span>
               </div>
             ))}
           </div>
           <div className="mt-3 pt-2 border-t border-line">
             <div className="flex items-center gap-1 flex-wrap">
-              <button onClick={autofill} className="text-[12px] px-2 py-1 rounded bg-surface2 text-s1">依最新收盤帶入</button>
-              {[1, 3, 5].map((n) => (
-                <button key={n} onClick={() => setPeriod(n)}
+              <span className="text-[12px] text-ink2 mr-1">判斷方式</span>
+              {[['auto', '自動（依收盤）'], ['manual', '手動']].map(([k, l]) => (
+                <button key={k} onClick={() => setPref({ mode: k })}
+                  className={`text-[12px] px-2 py-0.5 rounded ${pref.mode === k ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>{l}</button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1 flex-wrap mt-2">
+              <span className="text-[12px] text-ink2 mr-1">比較週期</span>
+              {[1, 3, 5, 10, 20, 30].map((n) => (
+                <button key={n} onClick={() => setPref({ period: n })}
                   className={`text-[11px] px-1.5 py-0.5 rounded ${period === n ? 'bg-s1 text-white' : 'bg-surface2 text-ink2'}`}>{n}日</button>
               ))}
             </div>
-            <p className="text-[10px] text-muted mt-1">{filled || '選填：用系統的最新收盤自動設定，再依你的判斷手動調整。'}</p>
+            <p className="text-[10px] text-muted mt-1 leading-relaxed">
+              {isAuto
+                ? <>自動：每次資料更新都以最新收盤對比 {period} 個交易日前判斷漲跌{(() => { const i = Object.values(auto.info)[0]; return i ? `（${i.from} → ${i.to}）` : '' })()}。σ ＝ 變化幅度相對該指標平時波動，「幅度小」代表方向不明顯、參考性較低。直接改下拉選單會切換成手動。</>
+                : <>手動：下拉選單由你決定，不會隨資料更新改變。數字仍顯示最新 {period} 日變化供參考；按「自動」可恢復。</>}
+            </p>
           </div>
         </Panel>
 

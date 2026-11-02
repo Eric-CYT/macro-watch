@@ -145,3 +145,27 @@ export const REGIME_TEXT = {
   transition: { name: '過渡期（相關性不明顯）', tone: 'var(--color-warning)',
     text: '股債相關性接近 0，市場主導邏輯正在切換或混合。觀察方向：若相關性轉正並持續，代表通膨／利率重新主導。' },
 }
+
+/**
+ * 自動判斷驅動指標狀態：最新收盤 vs N 個交易日前
+ * 回傳 { states: {dxy:'up'|'down',...}, info: {dxy:{chg, unit, z, from, to}} }
+ * z = N 日變化 ÷（近 60 日單日波動 × √N），|z| < 0.25 視為「幅度很小」
+ */
+export function autoDriverStates(metrics, n) {
+  const states = {}, info = {}
+  for (const d of DRIVERS) {
+    const m = metrics?.[d.metric]
+    const h = m?.history
+    if (!h || h.length <= n + 61) continue
+    const a = h[h.length - 1 - n][1], b = h[h.length - 1][1]
+    if (a == null || b == null) continue
+    const rate = !!m.rate
+    const chg = rate ? (b - a) * 100 : (b / a - 1) * 100
+    const ch = dailyChanges(h.slice(-62), rate).map((x) => x[1]).slice(-60)
+    const mu = ch.reduce((s, x) => s + x, 0) / ch.length
+    const sd = Math.sqrt(ch.reduce((s, x) => s + (x - mu) ** 2, 0) / (ch.length - 1))
+    if (chg !== 0) states[d.key] = chg > 0 ? 'up' : 'down'
+    info[d.key] = { chg, unit: rate ? 'bp' : '%', z: sd ? chg / (sd * Math.sqrt(n)) : null, from: h[h.length - 1 - n][0], to: h.at(-1)[0] }
+  }
+  return { states, info }
+}
