@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Panel } from './bits'
 import { getJSON, fmt } from '../lib/util'
-import { loadEntries, upsertEntry, exportJSON, importJSON, loadSync, saveSync, syncGithub, loadDraft, saveDraft, clearDraft } from '../lib/journal'
+import { loadEntries, upsertEntry, exportJSON, importJSON, loadSync, saveSync, syncGithub, loadDraft, saveDraft, clearDraft, deleteEntry } from '../lib/journal'
 import { PredictionPicker, OutcomeBadge, AfterMoves } from './Prediction'
 import { SummaryBox, emptySummary } from './Summary'
 import { groupOf, typeOf } from '../lib/groups'
@@ -70,7 +70,7 @@ export default function Journal({ index, initialDate, metrics }) {
   }
 
   const list = useMemo(() => {
-    const all = new Set([...Object.keys(entries), ...qmap.keys()])
+    const all = new Set([...Object.keys(entries).filter((d) => !entries[d]?.deleted), ...qmap.keys()])
     return [...all].sort().reverse().filter((d) => {
       if (mode === 'event' && !(qmap.get(d)?.length || entries[d]?.events?.length)) return false
       if (search) {
@@ -82,7 +82,7 @@ export default function Journal({ index, initialDate, metrics }) {
     })
   }, [entries, qmap, mode, search])
 
-  const e = sel ? entries[sel] : null
+  const e = sel && !entries[sel]?.deleted ? entries[sel] : null
   // 若當天題目檔後來補上了資金流向題，以題目檔為準（回答依序對應，不會遺失）
   const fileQs = qfile?.questions?.map((x) => x.text) || []
   const questions = fileQs.length > (e?.questions?.length || 0) ? fileQs : (e?.questions || fileQs)
@@ -257,6 +257,18 @@ export default function Journal({ index, initialDate, metrics }) {
             <button className="mt-1 px-3 py-1 rounded bg-surface2 text-sm"
               onClick={() => { setEntries(upsertEntry(sel, { review })); clearDraft(`review:${sel}`) }}>儲存檢討</button>
             {e.review && e.review === review && <span className="text-[11px] text-good ml-2">已儲存</span>}
+          </div>
+        )}
+        {e?.answers && !edit && (
+          <div className="mt-4 pt-3 border-t border-line flex items-center gap-2 flex-wrap">
+            <button className="px-3 py-1 rounded border border-critical text-critical text-[12px] hover:bg-critical/10"
+              onClick={async () => {
+                if (!confirm(`確定刪除 ${sel} 的作答紀錄？（題目本身會保留，可以重新作答）`)) return
+                setEntries(deleteEntry(sel))
+                const s = loadSync()
+                if (s?.token) { try { await syncGithub(s) } catch { /* 下次同步再處理 */ } }
+              }}>刪除這天的紀錄</button>
+            <span className="text-[11px] text-muted">會刪除回答、預判、總結與檢討；有開 GitHub 同步時，其他裝置也會一併刪除。</span>
           </div>
         )}
         {qfile?.headlines?.length > 0 && (

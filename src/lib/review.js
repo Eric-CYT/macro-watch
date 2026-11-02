@@ -51,6 +51,7 @@ export function flatten(entries, metrics, qIndex) {
   const evMap = new Map((qIndex || []).map((x) => [x.d, x.ev || []]))
   const rows = []
   for (const [date, e] of Object.entries(entries || {})) {
+    if (e.deleted) continue
     const qs = e.questions || []
     qs.forEach((q, i) => {
       const p = e.predictions?.[i]

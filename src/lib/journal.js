@@ -33,8 +33,18 @@ export function saveEntries(e) { localStorage.setItem(KEY, JSON.stringify(e)) }
 
 export function upsertEntry(date, patch) {
   const all = loadEntries()
-  all[date] = { ...(all[date] || {}), ...patch, date, updated_at: new Date().toISOString() }
+  const prev = all[date] && !all[date].deleted ? all[date] : {}  // 刪除後重新作答：從空白開始
+  all[date] = { ...prev, ...patch, date, updated_at: new Date().toISOString() }
   saveEntries(all)
+  return all
+}
+
+/** 刪除某天的紀錄：留下「已刪除」標記（含時間），同步時其他裝置的同一天也會被刪除，不會被舊資料蓋回來 */
+export function deleteEntry(date) {
+  const all = loadEntries()
+  all[date] = { date, deleted: true, updated_at: new Date().toISOString() }
+  saveEntries(all)
+  clearDraft(date); clearDraft(`edit:${date}`); clearDraft(`review:${date}`)
   return all
 }
 

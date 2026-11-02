@@ -149,7 +149,7 @@ export default function ReflectionV2({ q, metrics, onSaved, className = '' }) {
 function PrevReview({ date, metrics }) {
   const prev = useMemo(() => {
     const all = loadEntries()
-    const d = Object.keys(all).filter((x) => x < date && (all[x].summary || all[x].predictions?.some(Boolean))).sort().at(-1)
+    const d = Object.keys(all).filter((x) => x < date && !all[x].deleted && (all[x].summary || all[x].predictions?.some(Boolean))).sort().at(-1)
     return d ? { d, e: all[d] } : null
   }, [date])
   if (!prev) return null
