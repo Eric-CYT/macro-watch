@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import news as news_mod  # noqa: E402
 import cycle as cycle_mod  # noqa: E402
 import flows as flows_mod  # noqa: E402
+import notify as notify_mod  # noqa: E402
 import questions as q_mod  # noqa: E402
 import sources as S  # noqa: E402
 import validate as V  # noqa: E402
@@ -462,6 +463,7 @@ def main():
 
     # ------------------------------------------------------------ 推敲提問：每 3 個交易日一期（v2）
     qdir = arch / "questions"
+    QINFO = None
     qdate = (M.get("spx") or {}).get("date")
     generated = None
     if qdate:
@@ -495,6 +497,8 @@ def main():
                        "headlines": [{"title": n["title"], "url": n["url"], "tags": n["tags"]} for n in news["items"][:8]]}
             qfile.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
             generated = qdate
+            QINFO = {"focus_names": [payload["markets"][k]["name"] for k in payload.get("focus", []) if k in payload.get("markets", {})],
+                     "regime": (payload.get("assessment") or {}).get("regime_txt")}
     idx = []
     for p in sorted(qdir.glob("20*.json")):
         try:
@@ -504,6 +508,16 @@ def main():
         idx.append({"d": p.stem, "ev": ev})
     (qdir / "index.json").write_text(json.dumps(idx, ensure_ascii=False), encoding="utf-8")
     shutil.copytree(qdir, out / "questions", dirs_exist_ok=True)
+
+    # ------------------------------------------------------------ 推播（ntfy；未設定 NTFY_TOPIC 時略過）
+    try:
+        n_push, push_errs = notify_mod.run(M, FL, CONFIG, generated, arch / "cache" / "notify_state.json",
+                                           pages_url=os.environ.get("PAGES_URL"), qinfo=QINFO)
+        if n_push:
+            log(f"✓ ntfy 推播 {n_push} 則")
+        ERRORS.extend(push_errs)
+    except Exception as e:  # noqa: BLE001
+        ERRORS.append(f"ntfy: {type(e).__name__}: {str(e)[:120]}")
 
     # ------------------------------------------------------------ 輸出
     allm = list(M.values()) + list(macro.values()) + list(FL.values())
@@ -517,6 +531,7 @@ def main():
         "questions_generated": generated,
     }
     (out / "market.json").write_text(S.dumps(market), encoding="utf-8")
+
     compact = {
         "updated": market["updated"], "summary": summary, "errors": market["quality"]["errors"],
         "questions_generated": generated,

@@ -91,6 +91,48 @@ def test_flows_parsers():
     assert [c["status"] for c in nl["checks"]] == ["ok", "ok"], nl["checks"]
 
 
+def test_notify():
+    import os
+    import notify as N
+    from datetime import datetime
+    cfg = json.loads((Path(__file__).resolve().parent.parent / "shared" / "config.json").read_text(encoding="utf-8"))
+    h = lambda vals: [[f"2026-10-{20 + i:02d}", v] for i, v in enumerate(vals)]  # noqa: E731
+    M = {"spx": {"date": "2026-10-23", "history": h([100, 101, 102, 103])},
+         "dxy": {"history": h([100, 100.5, 101, 101.5]), "chg_1d": 0.5, "chg_5d": 1.2},
+         "us10y": {"history": h([4.0, 4.05, 4.1, 4.2]), "chg_1d": 10.0, "chg_5d": 25.0},
+         "us02y": {"chg_1d": 6.0, "chg_5d": 13.0},
+         "wti": {"history": h([60, 59, 58, 57])}, "usdjpy": {"chg_1d": -0.3, "chg_5d": -0.5}}
+    FL = {"txf": {"series": [["2026-10-22", -80000, 0, 0], ["2026-10-23", -86000, 0, 0]]},
+          "tw_inst": {"series": [["2026-10-23", -612.3, 50.0, -10.0, -572.3]]}}
+    al = [a[0] for a in N.alerts(M, cfg)]
+    assert al == ["liquidity", "valuation"], al  # DXY+0.5%&2Y+6bp；10Y+10bp；日圓未觸發
+    names, st = N.scenarios(M)
+    assert names == ["強勢美元吸金"] and st == {"dxy": "up", "us10y": "up", "wti": "down", "spx": "up"}, (names, st)
+    keys = [e[0] for e in N.build_events(M, FL, cfg, None)]
+    assert "txf:2026-10-23" in keys and "inst:2026-10-23" in keys and "alert:liquidity:2026-10-23" in keys, keys
+    # 夜間延遲：台北 03:00 一般通知延到 07:30；緊急(5)立即；白天不延遲
+    t3 = datetime(2026, 11, 3, 3, 0, tzinfo=N.TPE)
+    assert N._delay_for(3, t3) == str(int(datetime(2026, 11, 3, 7, 30, tzinfo=N.TPE).timestamp()))
+    assert N._delay_for(5, t3) is None and N._delay_for(3, datetime(2026, 11, 3, 9, 0, tzinfo=N.TPE)) is None
+    # 去重：首次只送確認訊息；第二次相同狀態不送；新題目、情境改變才送
+    got = []
+    snd = lambda *a: got.append(a[1])  # noqa: E731
+    with tempfile.TemporaryDirectory() as td:
+        sf = Path(td) / "s.json"
+        os.environ["NTFY_TOPIC"] = "test-topic"
+        try:
+            assert N.run(M, FL, cfg, None, sf, sender=snd)[0] == 1 and "啟用" in got[-1]
+            assert N.run(M, FL, cfg, None, sf, sender=snd)[0] == 0
+            assert N.run(M, FL, cfg, "2026-10-23", sf, sender=snd, qinfo={"focus_names": ["台股"]})[0] == 1 and "推敲" in got[-1]
+            M2 = json.loads(json.dumps(M)); M2["dxy"]["history"][-1][1] = 99  # 美元 3 日轉跌 → 情境改變
+            n = N.run(M2, FL, cfg, None, sf, sender=snd)[0]
+            assert n == 1 and "情境" in got[-1], (n, got)
+            assert N.run(M2, FL, cfg, None, sf, sender=snd)[0] == 0
+            assert N.run(M, FL, cfg, None, sf, sender=snd)[0] == 1  # 換回原情境也要通知
+        finally:
+            del os.environ["NTFY_TOPIC"]
+
+
 def _walk(start, n, drift=0.0, vol=0.01, seed=1, rate=False):
     rnd = random.Random(seed)
     d0 = date.fromisoformat("2026-11-02") - timedelta(days=int(n * 1.45))
@@ -288,6 +330,7 @@ if __name__ == "__main__":
     test_compare()
     test_ism_business_day()
     test_flows_parsers()
+    test_notify()
     sample = None
     if "--sample" in sys.argv:
         sample = str(Path(__file__).resolve().parent.parent / "public" / "data")
