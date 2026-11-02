@@ -202,16 +202,62 @@ function Center({ children }) {
   return <div className="min-h-screen flex items-center justify-center text-center p-6 text-ink2">{children}</div>
 }
 
+const NAV = [['', '儀表板'], ['reflect', '本期推敲'], ['journal', '推敲日誌'], ['review', '統整驗證'], ['matrix', '連動矩陣'],
+  ['trade', '交易前檢查'], ['quality', '資料驗證']]
+const NAV_KEY = 'mdj.nav.v1'
+function loadNav() {
+  try {
+    const o = JSON.parse(localStorage.getItem(NAV_KEY) || 'null')
+    const keys = NAV.map(([k]) => k)
+    if (!Array.isArray(o)) return keys
+    return [...o.filter((k) => keys.includes(k)), ...keys.filter((k) => !o.includes(k))] // 未來新增的頁面自動補在最後
+  } catch { return NAV.map(([k]) => k) }
+}
+
 function Header({ market, route, conv, setConv }) {
   const s = market.quality.summary
   const bad = (s.warn || 0) + (s.fail || 0) + (s.stale || 0) + (s.missing || 0)
+  const [order, setOrderRaw] = useState(loadNav)
+  const [edit, setEdit] = useState(false)
+  const setOrder = (o) => { setOrderRaw(o); try { localStorage.setItem(NAV_KEY, JSON.stringify(o)) } catch { /* ignore */ } }
+  const label = (k) => NAV.find(([x]) => x === k)?.[1]
+  const move = (i, d) => {
+    const j = i + d
+    if (j < 0 || j >= order.length) return
+    const o = [...order]; [o[i], o[j]] = [o[j], o[i]]; setOrder(o)
+  }
   const link = (r, l) => (
-    <a href={`#/${r}`} className={`px-2 py-1 rounded-md text-[13px] ${route === r ? 'bg-surface2 text-ink' : 'text-ink2 hover:text-ink'}`}>{l}</a>
+    <a key={r} href={`#/${r}`} className={`px-2 py-1 rounded-md text-[13px] ${route === r ? 'bg-surface2 text-ink' : 'text-ink2 hover:text-ink'}`}>{l}</a>
   )
   return (
     <header className="sticky top-0 z-30 bg-bg/95 backdrop-blur border-b border-line px-3 py-2 flex items-center gap-2 flex-wrap">
       <h1 className="font-semibold text-[15px] mr-2">Macro & Market Watch</h1>
-      <nav className="flex gap-1 flex-wrap">{link('', '儀表板')}{link('reflect', '本期推敲')}{link('journal', '推敲日誌')}{link('review', '統整驗證')}{link('matrix', '連動矩陣')}{link('trade', '交易前檢查')}{link('quality', '資料驗證')}</nav>
+      <nav className="flex gap-1 flex-wrap items-center relative">
+        {order.map((k) => link(k, label(k)))}
+        <button onClick={() => setEdit((e) => !e)} aria-label="自訂選單順序" title="自訂選單順序"
+          className={`px-1.5 py-1 rounded-md text-[13px] ${edit ? 'bg-s1 text-white' : 'text-muted hover:text-ink'}`}>⇅</button>
+        {edit && (
+          <div className="absolute top-9 left-0 z-50 w-60 rounded-lg bg-surface2 border border-line shadow-2xl p-2">
+            <div className="text-[12px] text-ink mb-1">選單順序（這台裝置記住）</div>
+            <ul className="space-y-1">
+              {order.map((k, i) => (
+                <li key={k} className="flex items-center gap-1 text-[13px]">
+                  <span className="w-5 text-muted num">{i + 1}</span>
+                  <span className="flex-1 text-ink2">{label(k)}</span>
+                  <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={`${label(k)} 上移`}
+                    className="w-7 h-7 rounded bg-bg text-ink2 disabled:opacity-30">↑</button>
+                  <button onClick={() => move(i, 1)} disabled={i === order.length - 1} aria-label={`${label(k)} 下移`}
+                    className="w-7 h-7 rounded bg-bg text-ink2 disabled:opacity-30">↓</button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-between mt-2">
+              <button onClick={() => setOrder(NAV.map(([k]) => k))} className="text-[11px] text-muted">恢復預設</button>
+              <button onClick={() => setEdit(false)} className="text-[12px] px-2 py-0.5 rounded bg-s1 text-white">完成</button>
+            </div>
+          </div>
+        )}
+      </nav>
       <div className="ml-auto flex items-center gap-2 text-[11px] text-ink2">
         <a href="#/quality" className="px-2 py-1 rounded-md bg-surface2" title="交叉比對摘要">
           <span style={{ color: bad ? STATUS.warn.c : STATUS.ok.c }}>{bad ? '⚠' : '✓'}</span> 一致 {s.ok}{bad ? ` · 需留意 ${bad}` : ''} · 單源 {s.single}
