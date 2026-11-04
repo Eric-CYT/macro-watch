@@ -215,11 +215,13 @@ def coingecko_history(coin_id: str, days: int = 365):
     return [[d, v] for d, v in sorted(out.items()) if v]
 
 
-def coingecko_prices(ids=("bitcoin", "pax-gold")):
+def coingecko_prices(ids=("bitcoin", "ethereum", "pax-gold")):
     r = _get("https://api.coingecko.com/api/v3/simple/price",
-             params={"ids": ",".join(ids), "vs_currencies": "usd", "include_last_updated_at": "true"})
+             params={"ids": ",".join(ids), "vs_currencies": "usd", "include_last_updated_at": "true",
+                     "include_market_cap": "true"})
     j = r.json()
-    return {k: {"usd": _num(v.get("usd")), "t": v.get("last_updated_at")} for k, v in j.items()}
+    return {k: {"usd": _num(v.get("usd")), "cap": _num(v.get("usd_market_cap")), "t": v.get("last_updated_at")}
+            for k, v in j.items()}
 
 
 # ---------------------------------------------------------------- 台灣證交所

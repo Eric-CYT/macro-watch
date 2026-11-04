@@ -4,6 +4,7 @@ import {
   ReferenceLine, Legend, Cell,
 } from 'recharts'
 import { fmt } from '../lib/util'
+import { cryptoBasket } from '../lib/flowRadar'
 
 export const AX = { stroke: '#8d8c84', fontSize: 11, tickLine: false, axisLine: { stroke: '#33332f' } }
 export const GRID = <CartesianGrid stroke="#2a2a27" strokeDasharray="0" vertical={false} />
@@ -193,7 +194,7 @@ const FLOW_ASSETS = [
   { k: 'spx', label: '美股', grp: '股市' },
   { k: 'sox', label: '費半', grp: '股市' },
   { k: 'taiex', label: '台股', grp: '股市' },
-  { k: 'btc', label: '加密', grp: '加密' },
+  { k: 'crypto', label: '加密', grp: '加密' },
   { k: 'dxy', label: '美元', grp: '匯率' },
   { k: 'us10y', label: '美債', grp: '債券', bond: true },
 ]
@@ -230,7 +231,11 @@ function flowScore(m, sel, bond) {
 const FLOW_KEY = 'mdj.flow.v1'
 const loadFlowSel = () => { try { return JSON.parse(localStorage.getItem(FLOW_KEY)) || { type: 'n', n: 1 } } catch { return { type: 'n', n: 1 } } }
 
-export function FlowChart({ metrics }) {
+export function FlowChart({ metrics: M0, weights }) {
+  const metrics = useMemo(() => {
+    const b = cryptoBasket(M0, weights)
+    return b ? { ...M0, crypto: { history: b.history } } : M0
+  }, [M0, weights])
   const [sel, setSelRaw] = useState(loadFlowSel)
   const [sorted, setSorted] = useState(false)
   const [nInput, setNInput] = useState(sel.type === 'n' ? String(sel.n) : '')
@@ -312,7 +317,7 @@ export function FlowChart({ metrics }) {
       </div>
       <p className="text-[10px] text-muted leading-relaxed">
         代理指標，非實際申贖資金：σ = N 日報酬 ÷ 該資產近 60 日波動，讓波動不同的資產可直接比較；|σ| ≥ 2（虛線）為異常強烈移動。
-        美債以價格方向呈現（殖利率下跌 = 流入）。各市場收盤日不同（加密含週末）。
+        美債以價格方向呈現（殖利率下跌 = 流入）。加密＝BTC＋ETH 市值加權。各市場收盤日不同（加密含週末）。
       </p>
     </div>
   )

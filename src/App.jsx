@@ -8,6 +8,7 @@ import Journal from './components/Journal'
 import Quality from './components/Quality'
 import Guide from './components/Guide'
 import { TwChips, NetLiq } from './components/Flows'
+import { FlowRadar } from './components/FlowRadar'
 import Review from './components/Review'
 import TradeCheck from './components/TradeCheck'
 import Matrix from './components/Matrix'
@@ -109,6 +110,13 @@ export default function App() {
         <main className="p-3"><Quality market={market} /></main>
       ) : (
         <main className="p-3 grid gap-3 xl:grid-cols-[minmax(300px,1fr)_minmax(0,2.3fr)_minmax(320px,1.1fr)] 2xl:grid-cols-[minmax(340px,1fr)_minmax(0,2.6fr)_minmax(380px,1.1fr)]">
+          {/* 頂：七邊形資金雷達 */}
+          <div className={`${tab === 'macro' ? 'block' : 'hidden'} xl:block xl:col-span-3`}>
+            <Panel title="七邊形資金雷達（台股／美股／加密／DXY／黃金／美債／原油）">
+              <FlowRadar metrics={M} weights={market.crypto_weights} />
+            </Panel>
+          </div>
+
           {/* 左：宏觀定錨 */}
           <div className={`${tab === 'macro' ? 'flex' : 'hidden'} xl:flex flex-col gap-3`}>
             <Panel title="債券與利率">
@@ -126,7 +134,7 @@ export default function App() {
           {/* 中：熱圖與核心標的 */}
           <div className={`${tab === 'market' ? 'flex' : 'hidden'} xl:flex flex-col gap-3 min-w-0`}>
             <Panel title="跨資產資金流向（金屬／原油／美股／台股／加密／美元／美債）">
-              <FlowChart metrics={M} />
+              <FlowChart metrics={M} weights={market.crypto_weights} />
             </Panel>
             <Panel title="台股籌碼：三大法人現貨 ＋ 台指期未平倉">
               <TwChips inst={market.flows?.tw_inst} txf={market.flows?.txf} />

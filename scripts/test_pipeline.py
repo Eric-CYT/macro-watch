@@ -165,7 +165,7 @@ def install_mocks():
     base = {
         "^TNX": (4.1, 0.04, True), "CL=F": (62, 0.02, False), "GC=F": (3900, 0.01, False), "HG=F": (5.0, 0.015, False),
         "DX-Y.NYB": (99.5, 0.004, False), "JPY=X": (152, 0.005, False), "TWD=X": (30.6, 0.003, False),
-        "^TWII": (27500, 0.012, False), "BTC-USD": (108000, 0.03, False), "^VIX": (17, 0.06, False),
+        "^TWII": (27500, 0.012, False), "BTC-USD": (108000, 0.03, False), "ETH-USD": (3900, 0.04, False), "^VIX": (17, 0.06, False),
         "^GSPC": (6800, 0.008, False), "^SOX": (7000, 0.02, False), "EURUSD=X": (1.155, 0.004, False),
         "GBPUSD=X": (1.32, 0.004, False), "CAD=X": (1.40, 0.003, False), "SEK=X": (9.45, 0.005, False),
         "CHF=X": (0.80, 0.004, False),
@@ -256,10 +256,11 @@ def install_mocks():
     FLW.taifex_txf = taifex_txf
     S.treasury_yields = lambda years_back=2: {"10 Yr": tr10, "2 Yr": tr2}
     S.binance_klines = lambda sym="BTCUSDT", interval="1d", limit=730: (
-        yahoo_chart("BTC-USD")["points"] if interval == "1d" else
+        yahoo_chart("ETH-USD" if sym == "ETHUSDT" else "BTC-USD")["points"] if interval == "1d" else
         [[1_793_000_000 + i * 900, 108000 + 500 * math.sin(i / 9)] for i in range(96)])
-    S.binance_price = lambda sym="BTCUSDT": yahoo_chart("BTC-USD")["price"]
-    S.coingecko_prices = lambda ids=(): {"bitcoin": {"usd": yahoo_chart("BTC-USD")["price"] * 1.001},
+    S.binance_price = lambda sym="BTCUSDT": yahoo_chart("ETH-USD" if sym == "ETHUSDT" else "BTC-USD")["price"]
+    S.coingecko_prices = lambda ids=(): {"bitcoin": {"usd": yahoo_chart("BTC-USD")["price"] * 1.001, "cap": 2.15e12},
+                                         "ethereum": {"usd": yahoo_chart("ETH-USD")["price"] * 0.999, "cap": 4.7e11},
                                          "pax-gold": {"usd": yahoo_chart("GC=F")["price"] * 0.99}}
     S.twse_taiex = lambda: yahoo_chart("^TWII")["points"][-20:]
     S.ism_latest = lambda: {"2026-09-01": 54.5}
@@ -293,9 +294,12 @@ def test_full_pipeline(sample_out=None):
         B.main()
         m = json.loads((out / "market.json").read_text())
         for k in ("us10y", "us02y", "spread", "hy", "wti", "gold", "copper", "dxy", "usdjpy", "usdtwd",
-                  "taiex", "spx", "sox", "vix", "btc"):
+                  "taiex", "spx", "sox", "vix", "btc", "eth"):
             assert k in m["metrics"] and m["metrics"][k]["history"], k
         assert m["metrics"]["us10y"]["checks"][0]["status"] == "ok"
+        assert m["metrics"]["eth"]["history"] and m["metrics"]["eth"]["status"] == "ok", m["metrics"]["eth"]["checks"]
+        w = m["crypto_weights"]
+        assert abs(w["btc"] + w["eth"] - 1) < 1e-3 and abs(w["btc"] - 2.15 / 2.62) < 1e-3, w
         assert m["metrics"]["spread"]["checks"][0]["status"] == "ok"
         assert m["metrics"]["dxy"]["checks"][0]["status"] in ("ok", "warn")
         for k in ("cpi", "core", "nfp", "unrate", "ism"):

@@ -113,7 +113,7 @@ def main():
     # ------------------------------------------------------------ 抓取
     YSYM = {
         "tnx": "^TNX", "wti": "CL=F", "gold": "GC=F", "copper": "HG=F", "dxy": "DX-Y.NYB",
-        "usdjpy": "JPY=X", "usdtwd": "TWD=X", "taiex": "^TWII", "btc": "BTC-USD", "vix": "^VIX",
+        "usdjpy": "JPY=X", "usdtwd": "TWD=X", "taiex": "^TWII", "btc": "BTC-USD", "eth": "ETH-USD", "vix": "^VIX",
         "spx": "^GSPC", "sox": "^SOX",
         "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDCAD": "CAD=X", "USDSEK": "SEK=X", "USDCHF": "CHF=X",
     }
@@ -135,6 +135,8 @@ def main():
     TR = safe("Treasury", S.treasury_yields) or {}
     BIN = safe("Binance BTCUSDT", S.binance_klines, "BTCUSDT", "1d", 730)
     BIN_PX = safe("Binance price", S.binance_price, "BTCUSDT")
+    BIN_ETH = safe("Binance ETHUSDT", S.binance_klines, "ETHUSDT", "1d", 730)
+    BIN_ETH_PX = safe("Binance ETH price", S.binance_price, "ETHUSDT")
     CG = safe("CoinGecko", S.coingecko_prices) or {}
     TW = safe("TWSE", S.twse_taiex)
     # ISM：已驗證歷史 + 官網新值，累積保存
@@ -324,6 +326,22 @@ def main():
     if btc_hist and BIN_PX:
         btc_hist = btc_hist[:-1] + [[btc_hist[-1][0], BIN_PX]]
     M["btc"] = metric("btc", "BTC/USDT", "crypto", "USDT", btc_hist, btc_src, btc_checks, 0, fallback=not BIN)
+    eth_hist = BIN_ETH or ypts("eth")
+    eth_px = BIN_ETH_PX or (eth_hist[-1][1] if eth_hist else None)
+    eth_checks = [
+        V.compare("Binance ETHUSDT", eth_px, "CoinGecko ETH/USD", (CG.get("ethereum") or {}).get("usd"), 0.8),
+        V.compare("Binance ETHUSDT", eth_px, "Yahoo ETH-USD", yprice("eth"), 0.8, note="USDT 與 USD 的匯差通常 <0.1%"),
+    ]
+    if eth_hist and BIN_ETH_PX:
+        eth_hist = eth_hist[:-1] + [[eth_hist[-1][0], BIN_ETH_PX]]
+    M["eth"] = metric("eth", "ETH/USDT", "crypto", "USDT", eth_hist, "Binance ETH/USDT（UTC 日切）" if BIN_ETH else "Yahoo ETH-USD（備援）",
+                      eth_checks, 1, fallback=not BIN_ETH)
+    # 加密籃子權重：依 CoinGecko 最新市值（BTC 與 ETH 兩者合計 = 100%）；抓不到時用 5:1 的近似值並標示
+    cb, ce = (CG.get("bitcoin") or {}).get("cap"), (CG.get("ethereum") or {}).get("cap")
+    if cb and ce:
+        CRYPTO_W = {"btc": round(cb / (cb + ce), 4), "eth": round(ce / (cb + ce), 4), "source": "CoinGecko 市值"}
+    else:
+        CRYPTO_W = {"btc": 0.83, "eth": 0.17, "source": "預設近似值（CoinGecko 市值抓取失敗）"}
 
     # ------------------------------------------------------------ 總經（月資料）
     def yoy(s):
@@ -524,7 +542,7 @@ def main():
     summary = {s: sum(1 for m in allm if m["status"] == s) for s in ("ok", "warn", "single", "fail", "stale", "missing")}
     market = {
         "updated": now.isoformat(timespec="seconds"),
-        "metrics": M, "macro": macro, "flows": FL, "heatmap": heat,
+        "metrics": M, "macro": macro, "flows": FL, "heatmap": heat, "crypto_weights": CRYPTO_W,
         "intraday": {"vix": (vix_i or {}).get("points") or [], "btc": btc_i or []},
         "events": upcoming[:20],
         "quality": {"summary": summary, "errors": ERRORS + [f"新聞 {e}" for e in news["errors"]]},
