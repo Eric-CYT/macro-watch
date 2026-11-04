@@ -135,12 +135,12 @@ def build(M, Y, F, TR, CG, BIN_ALTS, STABLE, tw_cache, safe_fn=None):
                                         note="即時價比對（取樣時間不同，容許 1.5%）"))
     tw = sum(alt_w.values()) or 1
     G["crypto"] = {"name": "加密市場", "items": [
-        item("stable", "穩定幣 USDT+USDC", sup, "CoinGecko 市值（≈流通量）", mode="supply",
-             note="穩定幣流通量增加＝新資金進入加密市場（場外資金入場）",
+        item("stable", "穩定幣", sup, "CoinGecko 市值（≈流通量）", mode="supply",
+             note="USDT＋USDC 流通量（市值）增加＝場外新資金進入加密市場",
              checks=[V.compare(None, None, None, None, 0, note="只有 CoinGecko 提供免費每日歷史")]),
         item("btc", "BTC", (M.get("btc") or {}).get("history"), (M.get("btc") or {}).get("source", ""), (M.get("btc") or {}).get("checks")),
         item("eth", "ETH", (M.get("eth") or {}).get("history"), (M.get("eth") or {}).get("source", ""), (M.get("eth") or {}).get("checks")),
-        item("alt", "山寨幣籃子", alt, "Binance（SOL/XRP/BNB/DOGE/ADA/TRX 市值加權）", alt_checks,
+        item("alt", "山寨幣", alt, "Binance（SOL/XRP/BNB/DOGE/ADA/TRX 市值加權）", alt_checks,
              note="權重：" + "、".join(f"{k.replace('USDT', '')} {v / tw * 100:.0f}%" for k, v in sorted(alt_w.items(), key=lambda x: -x[1]))),
     ]}
 
