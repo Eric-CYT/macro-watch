@@ -102,7 +102,7 @@ def fred(series_id: str, start: str | None = None):
 def treasury_yields(years_back: int = 2):
     """美國財政部官方 Daily Par Yield Curve。回傳 {'2 Yr': daily, '10 Yr': daily}"""
     now = datetime.now(timezone.utc)
-    res: dict[str, list] = {"2 Yr": [], "10 Yr": []}
+    res: dict[str, list] = {"3 Mo": [], "2 Yr": [], "5 Yr": [], "10 Yr": [], "30 Yr": []}
     for y in range(now.year - years_back, now.year + 1):
         url = (
             "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/"
@@ -119,7 +119,7 @@ def treasury_yields(years_back: int = 2):
     for k in res:
         res[k] = sorted({d: v for d, v in res[k]}.items())
         res[k] = [list(x) for x in res[k]]
-        if not res[k]:
+        if not res[k] and k in ("2 Yr", "10 Yr"):
             raise RuntimeError(f"Treasury {k} empty")
     return res
 
@@ -211,6 +211,16 @@ def coingecko_history(coin_id: str, days: int = 365):
              params={"vs_currency": "usd", "days": str(days), "interval": "daily"})
     out = {}
     for t, v in r.json()["prices"]:
+        out[datetime.fromtimestamp(t / 1000, tz=timezone.utc).strftime("%Y-%m-%d")] = _num(v)
+    return [[d, v] for d, v in sorted(out.items()) if v]
+
+
+def coingecko_caps_history(coin_id: str, days: int = 365):
+    """CoinGecko 每日市值（UTC）。穩定幣的市值≈流通量，增加＝新資金鑄造進入加密市場。"""
+    r = _get(f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart",
+             params={"vs_currency": "usd", "days": str(days), "interval": "daily"})
+    out = {}
+    for t, v in r.json()["market_caps"]:
         out[datetime.fromtimestamp(t / 1000, tz=timezone.utc).strftime("%Y-%m-%d")] = _num(v)
     return [[d, v] for d, v in sorted(out.items()) if v]
 

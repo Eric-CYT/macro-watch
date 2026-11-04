@@ -21,6 +21,7 @@ import news as news_mod  # noqa: E402
 import cycle as cycle_mod  # noqa: E402
 import flows as flows_mod  # noqa: E402
 import notify as notify_mod  # noqa: E402
+import drill as drill_mod  # noqa: E402
 import questions as q_mod  # noqa: E402
 import sources as S  # noqa: E402
 import validate as V  # noqa: E402
@@ -119,6 +120,9 @@ def main():
     }
     log("開始抓取 Yahoo")
     Y = pmap([(k, sym) for k, sym in YSYM.items()], yahoo_hist, workers=6)
+    have = set(YSYM.values())
+    YX = pmap([(sym, sym, "1y") for sym in drill_mod.YAHOO_EXTRA if sym not in have], yahoo_hist, workers=6)
+    YBYSYM = {sym: Y.get(k) for k, sym in YSYM.items()} | YX
     Y["USDJPY"] = Y["usdjpy"]
 
     FSTART = {
@@ -127,6 +131,7 @@ def main():
         "DEXUSEU": ago(60), "DEXUSUK": ago(60), "DEXCAUS": ago(60), "DEXSDUS": ago(60), "DEXSZUS": ago(60),
         "VIXCLS": ago(60), "SP500": ago(60),
         "WALCL": ago(1200), "WDTGAL": ago(1200), "RRPONTSYD": ago(1200), "WTREGEN": ago(1200),
+        **{sid: ago(500) for sid in drill_mod.FRED_EXTRA},
         "CPIAUCNS": "2010-01-01", "CPILFENS": "2010-01-01", "PAYEMS": "2010-01-01", "UNRATE": "2010-01-01",
     }
     log("開始抓取 FRED")
@@ -440,6 +445,28 @@ def main():
     for k, b in FL.items():
         b.setdefault("key", k)
 
+    # ------------------------------------------------------------ 七邊形延伸板塊
+    BIN_ALTS = pmap([(sym, f"Binance {sym}", S.binance_klines, sym, "1d", 400) for sym, _ in drill_mod.ALTS], safe, workers=3)
+    STABLE = {cid: safe(f"CoinGecko {cid} 市值", S.coingecko_caps_history, cid, 365) for cid in ("tether", "usd-coin")}
+    CGX = safe("CoinGecko 山寨幣市值", S.coingecko_prices, tuple(cid for _, cid in drill_mod.ALTS)) or {}
+    t = time.time()
+    try:
+        tw_cache, n_new, errs = drill_mod.twse_sectors(tw_days, arch / "cache" / "twse_sectors.json",
+                                                       max_new=15 if time.time() - T0 < 540 else 2)
+        log(f"✓ 證交所產業指數 新增 {n_new} 天 ({time.time() - t:.1f}s)")
+        ERRORS.extend(f"證交所產業指數 {e}" for e in errs)
+    except Exception as e:  # noqa: BLE001
+        tw_cache = {}
+        ERRORS.append(f"證交所產業指數: {type(e).__name__}: {str(e)[:120]}")
+    try:
+        DRILL = drill_mod.build(M, YBYSYM, F, TR, {**CG, **CGX}, {k: v for k, v in BIN_ALTS.items() if v}, STABLE, tw_cache)
+        n_tw = len([d for d, v in tw_cache.items() if v])
+        if n_tw < 125:
+            DRILL["taiex"]["note"] = f"歷史回補中（已 {n_tw} 個交易日，每次更新補 15 天；滿 125 天後 30 日比較才完整）"
+    except Exception as e:  # noqa: BLE001
+        DRILL = {}
+        ERRORS.append(f"延伸板塊: {type(e).__name__}: {str(e)[:160]}")
+
     # ------------------------------------------------------------ 沿用上一版（單項失敗時）
     prev = None
     pages = os.environ.get("PAGES_URL")
@@ -542,7 +569,7 @@ def main():
     summary = {s: sum(1 for m in allm if m["status"] == s) for s in ("ok", "warn", "single", "fail", "stale", "missing")}
     market = {
         "updated": now.isoformat(timespec="seconds"),
-        "metrics": M, "macro": macro, "flows": FL, "heatmap": heat, "crypto_weights": CRYPTO_W,
+        "metrics": M, "macro": macro, "flows": FL, "heatmap": heat, "crypto_weights": CRYPTO_W, "drill": DRILL,
         "intraday": {"vix": (vix_i or {}).get("points") or [], "btc": btc_i or []},
         "events": upcoming[:20],
         "quality": {"summary": summary, "errors": ERRORS + [f"新聞 {e}" for e in news["errors"]]},
@@ -559,6 +586,9 @@ def main():
                       "tail": (m.get("series") or [])[-3:]} for k, m in macro.items()},
         "flows": {k: {"name": b.get("name"), "status": b.get("status"), "checks": b.get("checks"), "note": b.get("note"),
                       "n": len(b.get("series") or []), "tail": (b.get("series") or [])[-3:]} for k, b in FL.items()},
+        "drill": {g: {"n": len(b["items"]), "items": {it["k"]: {"label": it["label"], "status": it["status"], "n": len(it["history"]),
+                                                                 "tail": it["history"][-2:], "checks": it["checks"]} for it in b["items"]},
+                      "note": b.get("note")} for g, b in DRILL.items()},
         "heatmap_missing": {g: [x["sym"] for x in v if x["chg"] is None] for g, v in heat.items()},
         "heatmap_dates": {g: sorted({x["date"] for x in v if x["date"]}) for g, v in heat.items()},
     }

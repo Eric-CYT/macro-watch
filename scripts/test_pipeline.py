@@ -82,6 +82,15 @@ def test_flows_parsers():
     t = FLW._taifex_parse(TAIFEX_CSV)
     # 期交所網頁 2026/06/18：外資 TX 未平倉淨額 -68,337 口、投信 58,597、自營商 63（小台不可混入）
     assert t == {"2026-06-18": {"dealer": 63, "trust": 58597, "foreign": -68337}}, t
+    import drill as DRL
+    old = {"stat": "OK", "fields1": ["指數", "收盤指數"], "data1": [["半導體類指數", "1,234.56"], ["半導體類報酬指數", "9,999"]]}
+    new = {"stat": "OK", "tables": [{"fields": ["指數", "收盤指數", "漲跌(+/-)"], "data": [["光電類指數", "88.10", "-"]]}]}
+    assert DRL._mi_parse(old) == {"半導體類指數": 1234.56} and DRL._mi_parse(new) == {"光電類指數": 88.1}
+    b = DRL.basket({"A": [["d1", 10], ["d2", 11]] * 1, "B": [["d1", 100], ["d2", 90]]}, {"A": 3, "B": 1})
+    assert b is None  # 共同日期 < 70 不建籃子
+    hA = [[f"d{i:03d}", 10 + i] for i in range(80)]; hB = [[f"d{i:03d}", 100.0] for i in range(80)]
+    b = DRL.basket({"A": hA, "B": hB}, {"A": 3, "B": 1})
+    assert abs(b[1][1] - 100 * (0.75 * 11 / 10 + 0.25)) < 1e-9, b[1]
     # 淨流動性單位：WALCL/WDTGAL 百萬、RRP 十億
     # 以 H.4.1（2026/10/29 發布）實際數字：TGA 週三 1,015,632、週平均 999,727（百萬）
     nl = FLW.netliq_block([["2026-10-28", 6_745_600.0]], [["2026-10-28", 1_015_632.0]],
@@ -237,6 +246,15 @@ def install_mocks():
         if "fiscaldata" in url:
             return _R({"data": [{"record_date": d, "account_type": "Treasury General Account (TGA) Closing Balance",
                                  "open_today_bal": str(v), "close_today_bal": "null"} for d, v in fred("WDTGAL")[-20:]]})
+        if "MI_INDEX" in url:
+            d = kw["params"]["date"]
+            rnd = random.Random(int(d))
+            names = ["半導體類指數", "電子零組件類指數", "金融保險類指數", "電腦及週邊設備類指數", "其他電子類指數",
+                     "通信網路類指數", "塑膠類指數", "光電類指數"]
+            base = (date.fromisoformat(f"{d[:4]}-{d[4:6]}-{d[6:]}") - date(2026, 1, 1)).days
+            return _R({"stat": "OK", "tables": [{"title": "價格指數", "fields": ["指數", "收盤指數", "漲跌(+/-)"],
+                       "data": [[n, f"{1000 * (1 + 0.001 * base + 0.01 * rnd.gauss(0, 1)) * (i + 1):,.2f}", "+"] for i, n in enumerate(names)]
+                       + [["半導體類報酬指數", "99999", "+"]]}]})
         if "openapi.taifex" in url:
             raise RuntimeError("mock: 404")
         return real_get(url, **kw)
@@ -259,9 +277,13 @@ def install_mocks():
         yahoo_chart("ETH-USD" if sym == "ETHUSDT" else "BTC-USD")["points"] if interval == "1d" else
         [[1_793_000_000 + i * 900, 108000 + 500 * math.sin(i / 9)] for i in range(96)])
     S.binance_price = lambda sym="BTCUSDT": yahoo_chart("ETH-USD" if sym == "ETHUSDT" else "BTC-USD")["price"]
-    S.coingecko_prices = lambda ids=(): {"bitcoin": {"usd": yahoo_chart("BTC-USD")["price"] * 1.001, "cap": 2.15e12},
+    _cg0 = lambda: {"bitcoin": {"usd": yahoo_chart("BTC-USD")["price"] * 1.001, "cap": 2.15e12},
                                          "ethereum": {"usd": yahoo_chart("ETH-USD")["price"] * 0.999, "cap": 4.7e11},
                                          "pax-gold": {"usd": yahoo_chart("GC=F")["price"] * 0.99}}
+    S.coingecko_prices = lambda ids=(): ({cid: {"usd": yahoo_chart("BTC-USD")["price"] * 1.001, "cap": 1e11 / (i + 1)}
+                                          for i, cid in enumerate(ids)} if "solana" in ids else _cg0())
+    S.coingecko_caps_history = lambda cid, days=365: [[d, (1.8e11 if cid == "tether" else 7.5e10) * v / 108000]
+                                                      for d, v in yahoo_chart("BTC-USD")["points"][-366:]]
     S.twse_taiex = lambda: yahoo_chart("^TWII")["points"][-20:]
     S.ism_latest = lambda: {"2026-09-01": 54.5}
     S.ism_from_news = lambda: {"2026-10-01": {53.9: ["PR Newswire", "Textile World"]}, "2026-08-01": {54.6: ["A"]}}
@@ -304,6 +326,17 @@ def test_full_pipeline(sample_out=None):
         assert m["metrics"]["dxy"]["checks"][0]["status"] in ("ok", "warn")
         for k in ("cpi", "core", "nfp", "unrate", "ism"):
             assert m["macro"][k]["series"], k
+        DR = m["drill"]
+        assert set(DR) == {"crypto", "spx", "taiex", "dxy", "gold", "us10y", "wti"}, DR.keys()
+        n_items = {g: len(b["items"]) for g, b in DR.items()}
+        assert n_items == {"crypto": 4, "spx": 8, "taiex": 8, "dxy": 7, "gold": 6, "us10y": 5, "wti": 6}, n_items
+        for g, b in DR.items():
+            for it in b["items"]:
+                assert it["history"], (g, it["k"], it["status"])
+        twd = next(i for i in DR["dxy"]["items"] if i["k"] == "TWD=X")
+        # 新台幣：Yahoo TWD=X 約 30.6（台幣/美元）→ 倒數後約 0.0327（升值＝上漲）
+        assert 0.02 < twd["history"][-1][1] < 0.05, twd["history"][-1]
+        assert DR["us10y"]["items"][0]["mode"] == "bond" and len(DR["taiex"]["items"][0]["history"]) == 15
         FLx = m["flows"]
         assert len(FLx["tw_inst"]["series"]) == 15 and FLx["tw_inst"]["checks"][0]["status"] == "ok" \
             and FLx["tw_inst"]["status"] == "single", FLx["tw_inst"]

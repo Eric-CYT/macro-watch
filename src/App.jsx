@@ -113,7 +113,7 @@ export default function App() {
           {/* 頂：七邊形資金雷達 */}
           <div className={`${tab === 'macro' ? 'block' : 'hidden'} xl:block xl:col-span-3`}>
             <Panel title="七邊形資金雷達（台股／美股／加密／DXY／黃金／美債／原油）">
-              <FlowRadar metrics={M} weights={market.crypto_weights} />
+              <FlowRadar metrics={M} weights={market.crypto_weights} drill={market.drill} />
             </Panel>
           </div>
 
