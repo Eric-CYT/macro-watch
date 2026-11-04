@@ -91,6 +91,28 @@ def test_flows_parsers():
     hA = [[f"d{i:03d}", 10 + i] for i in range(80)]; hB = [[f"d{i:03d}", 100.0] for i in range(80)]
     b = DRL.basket({"A": hA, "B": hB}, {"A": 3, "B": 1})
     assert abs(b[1][1] - 100 * (0.75 * 11 / 10 + 0.25)) < 1e-9, b[1]
+    import positioning as POS
+    q = POS._qfii_parse({"stat": "OK", "fields": ["產業別", "家數", "總發行股數", "僑外資及陸資持有總股數", "僑外資及陸資持股比率"],
+                         "data": [["水泥工業", "7", "1", "1", "20.10"], ["半導體業", "80", "1", "1", "71.23"], ["光電業", "50", "1", "1", "12.5"]]})
+    assert q == {"半導體類指數": 71.23, "光電類指數": 12.5}, q
+    pc_csv = ("日期,賣權成交量,買權成交量,買賣權成交量比率%,賣權未平倉量,買權未平倉量,買賣權未平倉量比率%\n"
+              "2026/10/30,500000,400000,125.00,150000,120000,125.00\n").encode("big5")
+    pc = POS._pc_parse(POS._csv_rows(pc_csv))
+    assert pc["2026-10-30"]["pc_oi"] == 125.0 and pc["2026-10-30"]["call_oi"] == 120000 and pc["2026-10-30"]["put_vol"] == 500000, pc
+    txo_csv = ("日期,商品名稱,買賣權別,身份別,買方交易口數,買方交易契約金額(千元),賣方交易口數,賣方交易契約金額(千元),"
+               "交易口數買賣淨額,交易契約金額買賣淨額(千元),買方未平倉口數,買方未平倉契約金額(千元),賣方未平倉口數,"
+               "賣方未平倉契約金額(千元),未平倉口數買賣淨額,未平倉契約金額買賣淨額(千元)\n"
+               "2026/07/30,臺指選擇權,買權,外資,1,1,1,1,0,0,30000,500000,28000,434000,2000,66000\n"
+               "2026/07/30,臺指選擇權,賣權,外資,1,1,1,1,0,0,25000,300000,22000,218000,3000,82000\n"
+               "2026/07/30,臺指選擇權,買權,自營商,1,1,1,1,0,0,1,1,1,1,9,9\n").encode("big5")
+    tx = POS._txo_parse(POS._csv_rows(txo_csv))
+    assert tx == {"2026-07-30": {"call": 66000, "call_lots": 2000, "put": 82000, "put_lots": 3000}}, tx
+    ob = POS.options_block({"pc": pc, "txo": {"2026-10-30": tx["2026-07-30"]}})
+    # 經濟日報 2026/7/30：外資台指期買權淨金額 0.66 億元、賣權淨金額 0.82 億元（千元 ÷ 1e5 ＝ 億元）
+    assert ob["series"][-1] == ["2026-10-30", 125.0, 125.0, 0.66, 0.82] and ob["checks"][0]["status"] == "ok", ob
+    cb = POS.cftc_block({"088691": [["2026-10-20", 200000, 500000], ["2026-10-27", 180000, 450000]]})
+    g = cb["items"][0]
+    assert g["net"] == 180000 and g["net_oi"] == 40.0 and g["chg_1w"] == -20000 and g["pctile"] == 50.0, g
     # 淨流動性單位：WALCL/WDTGAL 百萬、RRP 十億
     # 以 H.4.1（2026/10/29 發布）實際數字：TGA 週三 1,015,632、週平均 999,727（百萬）
     nl = FLW.netliq_block([["2026-10-28", 6_745_600.0]], [["2026-10-28", 1_015_632.0]],
@@ -105,18 +127,28 @@ def test_notify():
     import notify as N
     from datetime import datetime
     cfg = json.loads((Path(__file__).resolve().parent.parent / "shared" / "config.json").read_text(encoding="utf-8"))
-    h = lambda vals: [[f"2026-10-{20 + i:02d}", v] for i, v in enumerate(vals)]  # noqa: E731
-    M = {"spx": {"date": "2026-10-23", "history": h([100, 101, 102, 103])},
-         "dxy": {"history": h([100, 100.5, 101, 101.5]), "chg_1d": 0.5, "chg_5d": 1.2},
-         "us10y": {"history": h([4.0, 4.05, 4.1, 4.2]), "chg_1d": 10.0, "chg_5d": 25.0},
+    def h(last3, base=100.0, step=0.1, seed=1):
+        rnd = random.Random(seed)
+        d0 = date(2026, 6, 1)
+        out, v = [], base
+        for i in range(77):
+            v = v * (1 + rnd.gauss(0, 0.002)) if step > 0.05 else v + rnd.gauss(0, 0.02)
+            out.append([(d0 + timedelta(days=i)).isoformat(), round(v, 4)])
+        for j, mult in enumerate(last3):
+            v = v * mult if step > 0.05 else v + mult
+            out.append([(d0 + timedelta(days=77 + j)).isoformat(), round(v, 4)])
+        return out
+    M = {"spx": {"date": "2026-10-23", "history": h([1.01, 1.01, 1.01], seed=2)},
+         "dxy": {"history": h([1.006, 1.006, 1.006], seed=3), "chg_1d": 0.5, "chg_5d": 1.2},
+         "us10y": {"history": h([0.06, 0.06, 0.06], base=4.0, step=0.01, seed=4), "rate": True, "chg_1d": 10.0, "chg_5d": 25.0},
          "us02y": {"chg_1d": 6.0, "chg_5d": 13.0},
-         "wti": {"history": h([60, 59, 58, 57])}, "usdjpy": {"chg_1d": -0.3, "chg_5d": -0.5}}
+         "wti": {"history": h([1.0, 1.0, 1.0001], seed=5)}, "usdjpy": {"chg_1d": -0.3, "chg_5d": -0.5}}
     FL = {"txf": {"series": [["2026-10-22", -80000, 0, 0], ["2026-10-23", -86000, 0, 0]]},
           "tw_inst": {"series": [["2026-10-23", -612.3, 50.0, -10.0, -572.3]]}}
     al = [a[0] for a in N.alerts(M, cfg)]
     assert al == ["liquidity", "valuation"], al  # DXY+0.5%&2Y+6bp；10Y+10bp；日圓未觸發
     names, st = N.scenarios(M)
-    assert names == ["強勢美元吸金"] and st == {"dxy": "up", "us10y": "up", "wti": "down", "spx": "up"}, (names, st)
+    assert names == ["強勢美元吸金"] and st == {"dxy": "up", "us10y": "up", "wti": "flat", "spx": "up"}, (names, st)
     keys = [e[0] for e in N.build_events(M, FL, cfg, None)]
     assert "txf:2026-10-23" in keys and "inst:2026-10-23" in keys and "alert:liquidity:2026-10-23" in keys, keys
     # 夜間延遲：台北 03:00 一般通知延到 07:30；緊急(5)立即；白天不延遲
@@ -133,7 +165,7 @@ def test_notify():
             assert N.run(M, FL, cfg, None, sf, sender=snd)[0] == 1 and "啟用" in got[-1]
             assert N.run(M, FL, cfg, None, sf, sender=snd)[0] == 0
             assert N.run(M, FL, cfg, "2026-10-23", sf, sender=snd, qinfo={"focus_names": ["台股"]})[0] == 1 and "推敲" in got[-1]
-            M2 = json.loads(json.dumps(M)); M2["dxy"]["history"][-1][1] = 99  # 美元 3 日轉跌 → 情境改變
+            M2 = json.loads(json.dumps(M)); M2["dxy"]["history"][-1][1] = M2["dxy"]["history"][-4][1] * 0.98  # 美元 3 日轉跌 → 情境改變
             n = N.run(M2, FL, cfg, None, sf, sender=snd)[0]
             assert n == 1 and "情境" in got[-1], (n, got)
             assert N.run(M2, FL, cfg, None, sf, sender=snd)[0] == 0
@@ -186,7 +218,8 @@ def install_mocks():
             return {"points": pts, "price": pts[-1][1]}
         s, vol, rate = base.get(sym, (100, 0.015, False))
         pts = _walk(s, 500, vol=vol, seed=hash(sym) % 999, rate=rate)
-        return {"points": pts, "price": pts[-1][1], "prev_close": pts[-2][1]}
+        vols = [[d, 1e6 * (1 + 0.3 * math.sin(i / 5))] for i, (d, _) in enumerate(pts)]
+        return {"points": pts, "volume": vols, "price": pts[-1][1], "prev_close": pts[-2][1]}
 
     tr10 = _walk(4.1, 500, vol=0.04, seed=11, rate=True)
     tr2 = _walk(3.55, 500, vol=0.04, seed=12, rate=True)
@@ -255,6 +288,20 @@ def install_mocks():
             return _R({"stat": "OK", "tables": [{"title": "價格指數", "fields": ["指數", "收盤指數", "漲跌(+/-)"],
                        "data": [[n, f"{1000 * (1 + 0.001 * base + 0.01 * rnd.gauss(0, 1)) * (i + 1):,.2f}", "+"] for i, n in enumerate(names)]
                        + [["半導體類報酬指數", "99999", "+"]]}]})
+        if "MI_QFIIS_cat" in url:
+            d = kw["params"]["date"]
+            rnd = random.Random(int(d) + 7)
+            return _R({"stat": "OK", "fields": ["產業別", "家數", "總發行股數", "僑外資及陸資持有總股數", "僑外資及陸資持股比率"],
+                       "data": [[n, "1", "1", "1", f"{50 + rnd.gauss(0, 1):.2f}"] for n in
+                                ["半導體業", "電子零組件業", "金融保險業", "電腦及週邊設備業", "其他電子業", "通信網路業", "塑膠工業", "光電業"]]})
+        if "publicreporting.cftc" in url:
+            rows = []
+            for i in range(160):
+                d = (date(2023, 11, 7) + timedelta(weeks=i)).isoformat() + "T00:00:00.000"
+                for c in ("088691", "067651", "097741", "043602", "13874A", "133741"):
+                    rows.append({"cftc_contract_market_code": c, "report_date_as_yyyy_mm_dd": d, "open_interest_all": "500000",
+                                 "noncomm_positions_long_all": str(250000 + 1000 * (i % 40)), "noncomm_positions_short_all": "100000"})
+            return _R(rows)
         if "openapi.taifex" in url:
             raise RuntimeError("mock: 404")
         return real_get(url, **kw)
@@ -272,10 +319,26 @@ def install_mocks():
             d += timedelta(days=1)
         return out
     FLW.taifex_txf = taifex_txf
+    import positioning as POS
+
+    def fake_post(url, data):
+        s0 = date(*map(int, data["queryStartDate"].split("/"))); e0 = date(*map(int, data["queryEndDate"].split("/")))
+        dd = [s0 + timedelta(days=i) for i in range((e0 - s0).days + 1) if (s0 + timedelta(days=i)).weekday() < 5]
+        if "pcRatio" in url:
+            body = "日期,賣權成交量,買權成交量,買賣權成交量比率%,賣權未平倉量,買權未平倉量,買賣權未平倉量比率%\n" + "".join(
+                f"{d:%Y/%m/%d},500,400,125.00,{1200 + d.day},1000,{(1200 + d.day) / 10:.2f}\n" for d in dd)
+        else:
+            body = "日期,商品名稱,買賣權別,身份別,未平倉口數買賣淨額,未平倉契約金額買賣淨額(千元)\n" + "".join(
+                f"{d:%Y/%m/%d},臺指選擇權,{k},外資,{100 + d.day},{50000 + d.day}\n" for d in dd for k in ("買權", "賣權"))
+        return body.encode("big5")
+    POS._post = fake_post
+    POS.time.sleep = lambda s: None
     S.treasury_yields = lambda years_back=2: {"10 Yr": tr10, "2 Yr": tr2}
     S.binance_klines = lambda sym="BTCUSDT", interval="1d", limit=730: (
         yahoo_chart("ETH-USD" if sym == "ETHUSDT" else "BTC-USD")["points"] if interval == "1d" else
         [[1_793_000_000 + i * 900, 108000 + 500 * math.sin(i / 9)] for i in range(96)])
+    S.binance_quote_volume = lambda sym="BTCUSDT", limit=200: [[d, 2e9 * (1 + 0.2 * math.cos(i / 4))]
+                                                               for i, (d, _) in enumerate(yahoo_chart("BTC-USD")["points"][-limit:])]
     S.binance_price = lambda sym="BTCUSDT": yahoo_chart("ETH-USD" if sym == "ETHUSDT" else "BTC-USD")["price"]
     _cg0 = lambda: {"bitcoin": {"usd": yahoo_chart("BTC-USD")["price"] * 1.001, "cap": 2.15e12},
                                          "ethereum": {"usd": yahoo_chart("ETH-USD")["price"] * 0.999, "cap": 4.7e11},
@@ -326,7 +389,13 @@ def test_full_pipeline(sample_out=None):
         assert m["metrics"]["dxy"]["checks"][0]["status"] in ("ok", "warn")
         for k in ("cpi", "core", "nfp", "unrate", "ism"):
             assert m["macro"][k]["series"], k
+        assert len(m["metrics"]["spx"]["volume"]) == 160 and len(m["metrics"]["btc"]["volume"]) == 160
         DR = m["drill"]
+        assert m["flows"]["options"]["series"] and m["flows"]["options"]["checks"][0]["status"] == "ok", m["flows"]["options"]["checks"]
+        assert [i["k"] for i in m["flows"]["cftc"]["items"] if i["series"]] == ["gold", "wti", "jpy", "ust10", "es", "btc"]
+        assert DR["taiex"]["items"][0].get("qfii"), "外資產業持股未寫入"
+        assert next(i for i in DR["spx"]["items"] if i["k"] == "XLK")["volume"] and "volume" not in DR["us10y"]["items"][0]
+        assert next(i for i in DR["crypto"]["items"] if i["k"] == "alt")["volume"]
         assert set(DR) == {"crypto", "spx", "taiex", "dxy", "gold", "us10y", "wti"}, DR.keys()
         n_items = {g: len(b["items"]) for g, b in DR.items()}
         assert n_items == {"crypto": 4, "spx": 8, "taiex": 8, "dxy": 7, "gold": 6, "us10y": 5, "wti": 6}, n_items

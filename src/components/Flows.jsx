@@ -19,7 +19,7 @@ function Foot({ b }) {
 }
 
 /* ------------------------------------------------ 台股三大法人（現貨）＋ 台指期未平倉 */
-export function TwChips({ inst, txf }) {
+export function TwChips({ inst, txf, options }) {
   const [n, setN] = useState(20)
   const rows = inst?.series || []
   const data = useMemo(() => rows.slice(-n).map(([d, f, t, dl, tot]) => ({ d: d.slice(5), f, t, dl, tot })), [rows, n])
@@ -73,6 +73,7 @@ export function TwChips({ inst, txf }) {
         </div>
       )}
       <Foot b={inst} />
+      <OptionsBlock b={options} />
 
       {tx.length > 0 && (
         <div className="mt-3 pt-2 border-t border-line">
@@ -140,6 +141,69 @@ export function NetLiq({ b }) {
       <div className="text-[11px] text-ink2 num mt-1">
         Fed 資產 {fmt(last[2], 3)} − TGA {fmt(last[3], 3)} − 逆回購 {fmt(last[4], 3)}（兆美元）
       </div>
+      <Foot b={b} />
+    </div>
+  )
+}
+
+/* ------------------------------------------------ 台指選擇權：P/C 比與外資部位 */
+export function OptionsBlock({ b }) {
+  const s = b?.series || []
+  const data = useMemo(() => s.slice(-60).map(([d, pc, pcv, call, put]) => ({ d: d.slice(5), pc, call, put })), [s])
+  if (!s.length) return null
+  const last = s.at(-1), prev5 = s.length > 5 ? s.at(-6) : null
+  return (
+    <div className="mt-3 pt-2 border-t border-line">
+      <div className="flex items-baseline justify-between flex-wrap gap-2 text-[12px]">
+        <span className="text-ink2">台指選擇權（{last[0].slice(5)}）</span>
+        <span className="num">
+          P/C 未平倉比 <b className="text-ink">{fmt(last[1], 1)}%</b>{prev5 && <span className="text-muted">（5 日前 {fmt(prev5[1], 1)}%）</span>}
+          <span className="mx-1.5 text-muted">｜</span>外資買權 <span className={dirClass(last[3])}>{sgn(last[3], 2)}</span> 億・賣權 <span className={dirClass(last[4])}>{sgn(last[4], 2)}</span> 億
+        </span>
+      </div>
+      <div className="h-28 mt-1">
+        <ResponsiveContainer>
+          <LineChart data={data} margin={{ top: 4, right: 4, left: -6, bottom: 0 }}>
+            {GRID}
+            <XAxis dataKey="d" {...AX} minTickGap={18} />
+            <YAxis {...AX} width={44} domain={['auto', 'auto']} tickFormatter={(v) => `${Math.round(v)}%`} />
+            <ReferenceLine y={100} stroke="#8d8c84" strokeDasharray="4 3" />
+            <Tooltip {...TT} formatter={(v) => [`${fmt(v, 1)}%`, 'P/C 未平倉比']} />
+            <Line isAnimationActive={false} dataKey="pc" stroke="#e0a43a" dot={false} strokeWidth={1.6} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <Foot b={b} />
+    </div>
+  )
+}
+
+/* ------------------------------------------------ CFTC 投機部位 */
+export function Cftc({ b }) {
+  const items = (b?.items || []).filter((i) => i.series?.length)
+  if (!items.length) return <p className="text-[12px] text-muted">CFTC 資料尚未產生</p>
+  const crowd = (p) => (p >= 90 ? ['極度擁擠做多', 'var(--color-critical)'] : p <= 10 ? ['極度擁擠做空', 'var(--color-critical)']
+    : p >= 75 ? ['偏多擁擠', 'var(--color-warning)'] : p <= 25 ? ['偏空擁擠', 'var(--color-warning)'] : ['中性', 'var(--color-muted)'])
+  return (
+    <div>
+      <table className="w-full text-[12px]">
+        <thead className="text-muted"><tr><th className="text-left font-normal">市場</th><th className="font-normal">淨部位（口）</th><th className="font-normal">週變化</th><th className="font-normal">佔未平倉</th><th className="font-normal">3 年百分位</th></tr></thead>
+        <tbody>
+          {items.map((i) => {
+            const [t, c] = crowd(i.pctile)
+            return (
+              <tr key={i.k} className="border-t border-line num">
+                <td className="py-1 text-ink">{i.label}</td>
+                <td className={`text-center ${dirClass(i.net)}`}>{sgn(i.net, 0)}</td>
+                <td className={`text-center ${dirClass(i.chg_1w)}`}>{sgn(i.chg_1w, 0)}</td>
+                <td className="text-center text-ink2">{sgn(i.net_oi, 1)}%</td>
+                <td className="text-center"><span className="text-ink">{fmt(i.pctile, 0)}</span> <span className="text-[11px]" style={{ color: c }}>{t}</span></td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      <p className="text-[10px] text-muted mt-1 num">資料截至 {items[0].date}（週二），每週五美東下午公布。日圓為日圓期貨：淨多＝押日圓升值。</p>
       <Foot b={b} />
     </div>
   )

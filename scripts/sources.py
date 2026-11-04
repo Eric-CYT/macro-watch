@@ -156,12 +156,14 @@ def yahoo_chart(symbol: str, rng: str = "2y", interval: str = "1d"):
     meta = res.get("meta", {})
     ts = res.get("timestamp") or []
     closes = res["indicators"]["quote"][0].get("close") or []
+    vols = res["indicators"]["quote"][0].get("volume") or []
     off = int(meta.get("gmtoffset") or 0)
-    pts = []
-    for t, c in zip(ts, closes):
+    pts, vpts = [], []
+    for i, (t, c) in enumerate(zip(ts, closes)):
         v = _num(c)
         if v is None:
             continue
+        vol = _num(vols[i]) if i < len(vols) else None
         if interval.endswith("d") or interval.endswith("wk") or interval.endswith("mo"):
             lt = datetime.fromtimestamp(t + off, tz=timezone.utc)
             # CME 期貨（CL=F、GC=F、HG=F…）的日 K 時間戳記是「前一晚 18:00 開盤」，
@@ -169,14 +171,18 @@ def yahoo_chart(symbol: str, rng: str = "2y", interval: str = "1d"):
             if lt.hour >= 16:
                 lt += timedelta(days=1)
             pts.append([lt.strftime("%Y-%m-%d"), v])
+            if vol:
+                vpts.append([lt.strftime("%Y-%m-%d"), vol])
         else:
             pts.append([int(t), v])
     if interval.endswith("d"):  # 同日去重（保留最後一筆）
         pts = [list(x) for x in dict((d, v) for d, v in pts).items()]
+        vpts = [list(x) for x in dict((d, v) for d, v in vpts).items()]
     if not pts:
         raise RuntimeError(f"Yahoo {symbol} empty")
     return {
         "points": pts,
+        "volume": vpts,
         "price": _num(meta.get("regularMarketPrice")),
         "time": meta.get("regularMarketTime"),
         "prev_close": _num(meta.get("chartPreviousClose") or meta.get("previousClose")),
@@ -185,6 +191,13 @@ def yahoo_chart(symbol: str, rng: str = "2y", interval: str = "1d"):
 
 
 # ---------------------------------------------------------------- 加密貨幣
+def binance_quote_volume(symbol="BTCUSDT", limit=200):
+    """日 K 的 USDT 成交額（quote asset volume，k[7]）"""
+    r = _get("https://data-api.binance.vision/api/v3/klines",
+             params={"symbol": symbol, "interval": "1d", "limit": limit})
+    return [[datetime.fromtimestamp(int(k[0]) // 1000, tz=timezone.utc).strftime("%Y-%m-%d"), _num(k[7])] for k in r.json()]
+
+
 def binance_klines(symbol="BTCUSDT", interval="1d", limit=730):
     """Binance 公開行情鏡像 data-api.binance.vision（不受地區限制、免 key）。日 K 以 UTC 日切。"""
     r = _get("https://data-api.binance.vision/api/v3/klines",

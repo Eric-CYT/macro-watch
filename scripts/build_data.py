@@ -22,6 +22,7 @@ import cycle as cycle_mod  # noqa: E402
 import flows as flows_mod  # noqa: E402
 import notify as notify_mod  # noqa: E402
 import drill as drill_mod  # noqa: E402
+import positioning as pos_mod  # noqa: E402
 import questions as q_mod  # noqa: E402
 import sources as S  # noqa: E402
 import validate as V  # noqa: E402
@@ -341,6 +342,14 @@ def main():
         eth_hist = eth_hist[:-1] + [[eth_hist[-1][0], BIN_ETH_PX]]
     M["eth"] = metric("eth", "ETH/USDT", "crypto", "USDT", eth_hist, "Binance ETH/USDT（UTC 日切）" if BIN_ETH else "Yahoo ETH-USD（備援）",
                       eth_checks, 1, fallback=not BIN_ETH)
+    # 成交量（量能比用）：股市取 Yahoo，加密取 Binance USDT 成交額；期貨換月會造成量能跳動、外匯與殖利率無成交量 → 不提供
+    VOLQ = pmap([(sym, f"Binance {sym} 成交額", S.binance_quote_volume, sym, 200) for sym in ["BTCUSDT", "ETHUSDT"] + [a for a, _ in drill_mod.ALTS]], safe, workers=4)
+    for k in ("taiex", "spx"):
+        if k in M and (Y.get(k) or {}).get("volume"):
+            M[k]["volume"] = (Y[k]["volume"])[-160:]
+    for k, sym in (("btc", "BTCUSDT"), ("eth", "ETHUSDT")):
+        if k in M and VOLQ.get(sym):
+            M[k]["volume"] = VOLQ[sym][-160:]
     # 加密籃子權重：依 CoinGecko 最新市值（BTC 與 ETH 兩者合計 = 100%）；抓不到時用 5:1 的近似值並標示
     cb, ce = (CG.get("bitcoin") or {}).get("cap"), (CG.get("ethereum") or {}).get("cap")
     if cb and ce:
@@ -458,8 +467,28 @@ def main():
     except Exception as e:  # noqa: BLE001
         tw_cache = {}
         ERRORS.append(f"證交所產業指數: {type(e).__name__}: {str(e)[:120]}")
+    t = time.time()
     try:
-        DRILL = drill_mod.build(M, YBYSYM, F, TR, {**CG, **CGX}, {k: v for k, v in BIN_ALTS.items() if v}, STABLE, tw_cache)
+        qfii_cache, n_new, errs = pos_mod.twse_qfii(tw_days, arch / "cache" / "twse_qfii.json",
+                                                    max_new=30 if time.time() - T0 < 500 else 3)
+        log(f"✓ 證交所外資產業持股 新增 {n_new} 天 ({time.time() - t:.1f}s)")
+        ERRORS.extend(f"證交所外資產業持股 {e}" for e in errs)
+    except Exception as e:  # noqa: BLE001
+        qfii_cache = {}
+        ERRORS.append(f"證交所外資產業持股: {type(e).__name__}: {str(e)[:120]}")
+    t = time.time()
+    try:
+        opt_cache, errs = pos_mod.taifex_options(arch / "cache" / "taifex_options.json")
+        FL["options"] = pos_mod.options_block(opt_cache)
+        log(f"✓ 期交所選擇權 P/C {len(opt_cache['pc'])} 天、TXO {len(opt_cache['txo'])} 天 ({time.time() - t:.1f}s)")
+        ERRORS.extend(f"期交所選擇權 {e}" for e in errs)
+    except Exception as e:  # noqa: BLE001
+        ERRORS.append(f"期交所選擇權: {type(e).__name__}: {str(e)[:120]}")
+    COT = safe("CFTC 持倉報告", pos_mod.cftc_cot)
+    FL["cftc"] = pos_mod.cftc_block(COT)
+    try:
+        DRILL = drill_mod.build(M, YBYSYM, F, TR, {**CG, **CGX}, {k: v for k, v in BIN_ALTS.items() if v}, STABLE, tw_cache,
+                                volq={k: v for k, v in VOLQ.items() if v}, qfii=qfii_cache)
         n_tw = len([d for d, v in tw_cache.items() if v])
         if n_tw < 125:
             DRILL["taiex"]["note"] = f"歷史回補中（已 {n_tw} 個交易日，每次更新補 30 天；滿 122 天後 30 日比較才完整）"
@@ -482,7 +511,7 @@ def main():
         for k, m in macro.items():
             if m["status"] == "missing" and k in prev.get("macro", {}):
                 macro[k] = {**prev["macro"][k], "status": "stale"}
-        for k in ("tw_inst", "txf", "netliq"):
+        for k in ("tw_inst", "txf", "netliq", "options", "cftc"):
             if (k not in FL or FL[k]["status"] == "missing") and k in prev.get("flows", {}):
                 FL[k] = {**prev["flows"][k], "status": "stale", "note": "本次抓取失敗，沿用上一版資料"}
 

@@ -46,10 +46,22 @@ def _trim(h):
     return [[d, round(v, 6)] for d, v in (h or [])[-KEEP:] if v is not None]
 
 
-def item(k, label, hist, source, checks=None, mode="price", note=None):
+def item(k, label, hist, source, checks=None, mode="price", note=None, volume=None):
     checks = checks or []
-    return {"k": k, "label": label, "history": _trim(hist), "source": source, "mode": mode, "note": note,
-            "checks": checks, "status": (V.worst(checks) if hist else "missing")}
+    out = {"k": k, "label": label, "history": _trim(hist), "source": source, "mode": mode, "note": note,
+           "checks": checks, "status": (V.worst(checks) if hist else "missing")}
+    if volume:
+        out["volume"] = [[d, v] for d, v in volume[-160:] if v]
+    return out
+
+
+def sum_volume(series_list):
+    """多個成交額序列按日期加總（只保留每個序列都有的日期）"""
+    lst = [dict(s) for s in series_list if s]
+    if not lst:
+        return None
+    common = sorted(set.intersection(*(set(m) for m in lst)))
+    return [[d, sum(m[d] for m in lst)] for d in common]
 
 
 # ---------------------------------------------------------------- 台股產業指數（證交所）
@@ -113,9 +125,11 @@ def basket(series_by_key, weights):
     return [[d, round(100 * sum(weights[k] / tot * maps[k][d] / base[k] for k in keys), 6)] for d in common]
 
 
-def build(M, Y, F, TR, CG, BIN_ALTS, STABLE, tw_cache, safe_fn=None):
+def build(M, Y, F, TR, CG, BIN_ALTS, STABLE, tw_cache, safe_fn=None, volq=None, qfii=None):
     """Y: {yahoo symbol: {'points','price'}}；F: FRED；TR: 財政部；CG: CoinGecko simple price（含 cap）"""
     yp = lambda s: (Y.get(s) or {}).get("points")  # noqa: E731
+    yv = lambda s: (Y.get(s) or {}).get("volume")  # noqa: E731
+    volq = volq or {}
     G = {}
 
     # 加密
@@ -138,22 +152,32 @@ def build(M, Y, F, TR, CG, BIN_ALTS, STABLE, tw_cache, safe_fn=None):
         item("stable", "穩定幣", sup, "CoinGecko 市值（≈流通量）", mode="supply",
              note="USDT＋USDC 流通量（市值）增加＝場外新資金進入加密市場",
              checks=[V.compare(None, None, None, None, 0, note="只有 CoinGecko 提供免費每日歷史")]),
-        item("btc", "BTC", (M.get("btc") or {}).get("history"), (M.get("btc") or {}).get("source", ""), (M.get("btc") or {}).get("checks")),
-        item("eth", "ETH", (M.get("eth") or {}).get("history"), (M.get("eth") or {}).get("source", ""), (M.get("eth") or {}).get("checks")),
+        item("btc", "BTC", (M.get("btc") or {}).get("history"), (M.get("btc") or {}).get("source", ""), (M.get("btc") or {}).get("checks"),
+             volume=volq.get("BTCUSDT")),
+        item("eth", "ETH", (M.get("eth") or {}).get("history"), (M.get("eth") or {}).get("source", ""), (M.get("eth") or {}).get("checks"),
+             volume=volq.get("ETHUSDT")),
         item("alt", "山寨幣", alt, "Binance（SOL/XRP/BNB/DOGE/ADA/TRX 市值加權）", alt_checks,
-             note="權重：" + "、".join(f"{k.replace('USDT', '')} {v / tw * 100:.0f}%" for k, v in sorted(alt_w.items(), key=lambda x: -x[1]))),
+             note="權重：" + "、".join(f"{k.replace('USDT', '')} {v / tw * 100:.0f}%" for k, v in sorted(alt_w.items(), key=lambda x: -x[1])),
+             volume=sum_volume([volq.get(k) for k in alt_w])),
     ]}
 
     # 美股類股
     G["spx"] = {"name": "美股類股（S&P 500 權重前 8 大）", "items": [
         item(s, f"{nm}", yp(s), f"Yahoo {s}（類股 ETF）",
-             [V.compare(None, None, None, None, 0, note="無第二個免費來源")]) for s, nm in US_SECTORS]}
+             [V.compare(None, None, None, None, 0, note="無第二個免費來源")], volume=yv(s)) for s, nm in US_SECTORS]}
 
     # 台股產業指數
     days = sorted(d for d, v in (tw_cache or {}).items() if v)
-    G["taiex"] = {"name": "台股產業（加權指數權重前 8 大）", "items": [
-        item(k, nm, [[d, tw_cache[d][k]] for d in days if k in tw_cache[d]], "證交所 產業類指數（MI_INDEX）",
-             [V.compare(None, None, None, None, 0, note="證交所官方指數，無第二個免費來源")]) for k, nm in TW_SECTORS]}
+    qd = sorted(d for d, v in (qfii or {}).items() if v)
+    tw_items = []
+    for k, nm in TW_SECTORS:
+        it = item(k, nm, [[d, tw_cache[d][k]] for d in days if k in tw_cache[d]], "證交所 產業類指數（MI_INDEX）",
+                  [V.compare(None, None, None, None, 0, note="證交所官方指數，無第二個免費來源")])
+        q = [[d, qfii[d][k]] for d in qd if k in qfii[d]]
+        if q:
+            it["qfii"] = q[-160:]
+        tw_items.append(it)
+    G["taiex"] = {"name": "台股產業（加權指數權重前 8 大）", "items": tw_items}
 
     # 外匯：一律「該貨幣升值＝上漲」
     fx_items = []
@@ -168,7 +192,8 @@ def build(M, Y, F, TR, CG, BIN_ALTS, STABLE, tw_cache, safe_fn=None):
     # 貴金屬
     G["gold"] = {"name": "貴金屬", "items": [
         item(s, nm, yp(s), f"Yahoo {s}", (M.get("gold") or {}).get("checks") if s == "GC=F" else
-             [V.compare(None, None, None, None, 0, note="無第二個免費每日來源")]) for s, nm in METALS],
+             [V.compare(None, None, None, None, 0, note="無第二個免費每日來源")],
+             volume=yv(s) if "=" not in s else None) for s, nm in METALS],
         "note": "公開期貨的貴金屬只有金、銀、鉑、鈀 4 種（銠、銥等無免費每日報價），另以金礦股、銀礦股補足 6 項"}
 
     # 美債
@@ -186,6 +211,6 @@ def build(M, Y, F, TR, CG, BIN_ALTS, STABLE, tw_cache, safe_fn=None):
         chk = [V.compare_series(f"Yahoo {s}", yp(s), f"FRED {fid}", F.get(fid), 8.0 if s != "NG=F" else 15.0,
                                 max_lag_days=10, note="期貨近月 vs 現貨，量級檢查")] if fid else \
               [V.compare(None, None, None, None, 0, note="無第二個免費每日來源")]
-        en.append(item(s, nm, yp(s), f"Yahoo {s}", chk))
+        en.append(item(s, nm, yp(s), f"Yahoo {s}", chk, volume=yv(s) if "=" not in s else None))
     G["wti"] = {"name": "能源", "items": en}
     return G

@@ -27,6 +27,7 @@ const KEY = 'mdj.matrix.v1'
 const GREEN = '#2fb36a', RED = '#ef5f5f', GRAY = '#8d8c84'
 const TONE = { good: GREEN, critical: RED, serious: '#ec835a', warning: '#fab219' }
 const sc = (v) => (v > 0 ? GREEN : v < 0 ? RED : GRAY)
+const LBL = { ...STATES, flat: '持平' }
 const sign = (v) => (v == null ? 'N/A' : v > 0 ? `+${v}` : `${v}`)
 
 /** (i) 資訊圖示：滑鼠懸浮、鍵盤聚焦或手機點擊時顯示說明 */
@@ -117,17 +118,17 @@ export default function Matrix({ metrics }) {
             {DRIVERS.map((d) => (
               <div key={d.key} className="flex items-center justify-between gap-2">
                 <span className="text-[13px] text-ink flex items-center gap-1.5">{d.name}
-                  <InfoTip title={`${d.name} ${STATES[states[d.key]]}`}>{MATRIX[d.key][states[d.key]]?.note}</InfoTip></span>
+                  <InfoTip title={`${d.name} ${LBL[states[d.key]]}`}>{MATRIX[d.key][states[d.key]]?.note || '變化幅度小於平常波動的 0.25 倍，視為方向不明顯：這個指標本期不參與情境判斷與計分。'}</InfoTip></span>
 <span className="flex items-center gap-2">
                   {auto.info[d.key] && <span className="text-[11px] num text-muted text-right leading-tight">
                     {auto.info[d.key].chg > 0 ? '+' : ''}{auto.info[d.key].chg.toFixed(auto.info[d.key].unit === 'bp' ? 1 : 2)}{auto.info[d.key].unit}
-                    {auto.info[d.key].chg === 0 ? <span className="block text-warning">持平（沿用上次）</span> : auto.info[d.key].z != null && <span className="block">{auto.info[d.key].z > 0 ? '+' : ''}{auto.info[d.key].z.toFixed(1)}σ{Math.abs(auto.info[d.key].z) < 0.25 ? '・幅度小' : ''}</span>}
+                    {auto.info[d.key].z != null && <span className="block">{auto.info[d.key].z > 0 ? '+' : ''}{auto.info[d.key].z.toFixed(1)}σ{Math.abs(auto.info[d.key].z) < 0.25 ? '・視為持平' : ''}</span>}
                   </span>}
                   <select value={states[d.key]} onChange={(e) => setStates({ ...states, [d.key]: e.target.value })}
                     aria-label={d.name}
                     className="bg-bg border border-line rounded-lg px-2 py-1 text-[13px] font-semibold"
-                    style={{ color: states[d.key] === 'up' ? GREEN : RED }}>
-                    {Object.entries(STATES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    style={{ color: states[d.key] === 'up' ? GREEN : states[d.key] === 'down' ? RED : GRAY }}>
+                    {Object.entries(LBL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
                 </span>
               </div>
@@ -171,9 +172,9 @@ export default function Matrix({ metrics }) {
                 <ul className="text-[12px] space-y-1">
                   {s.parts.map((p) => (
                     <li key={p.driver.key} className="flex items-center justify-between gap-2">
-                      <span className="text-ink2 flex items-center gap-1">{p.driver.name.split(' ')[0]} {STATES[p.state]}
-                        <InfoTip title={`${p.driver.name} ${STATES[p.state]} → ${t.name} ${sign(p.value)}`}>{p.note}</InfoTip></span>
-                      <span className="num font-semibold text-right" style={{ color: p.value == null ? GRAY : sc(p.value) }}>{sign(p.value)}
+                      <span className="text-ink2 flex items-center gap-1">{p.driver.name.split(' ')[0]} {LBL[p.state]}
+                        <InfoTip title={`${p.driver.name} ${LBL[p.state]} → ${t.name} ${p.state === 'flat' ? '不計分' : sign(p.value)}`}>{p.note || '持平：不計分'}</InfoTip></span>
+                      <span className="num font-semibold text-right" style={{ color: p.value == null ? GRAY : sc(p.value) }}>{p.state === 'flat' ? '—' : sign(p.value)}
                         <Ev c={ev[p.driver.key]?.[p.state]?.[t.key]} /></span>
                     </li>
                   ))}

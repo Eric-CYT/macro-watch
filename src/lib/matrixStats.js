@@ -13,6 +13,7 @@ import { DRIVERS, TARGETS, MATRIX } from './matrixConfig'
 export const TARGET_METRIC = { us: 'spx', tw: 'taiex', crypto: 'btc', gold: 'gold', oil: 'wti' }
 const NEXT_DAY = new Set(['tw'])
 export const Z_MIN = 0.5
+export const FLAT_Z = 0.25
 
 /** 日變化：價格用 %、利率用 bp */
 export function dailyChanges(h, rate) {
@@ -164,8 +165,10 @@ export function autoDriverStates(metrics, n) {
     const ch = dailyChanges(h.slice(-62), rate).map((x) => x[1]).slice(-60)
     const mu = ch.reduce((s, x) => s + x, 0) / ch.length
     const sd = Math.sqrt(ch.reduce((s, x) => s + (x - mu) ** 2, 0) / (ch.length - 1))
-    if (chg !== 0) states[d.key] = chg > 0 ? 'up' : 'down'
-    info[d.key] = { chg, unit: rate ? 'bp' : '%', z: sd ? chg / (sd * Math.sqrt(n)) : null, from: h[h.length - 1 - n][0], to: h.at(-1)[0] }
+    const z = sd ? chg / (sd * Math.sqrt(n)) : null
+    // 三態：|z| < 0.25 視為持平（方向不明顯，不參與情境與計分）
+    states[d.key] = chg === 0 || (z != null && Math.abs(z) < FLAT_Z) ? 'flat' : chg > 0 ? 'up' : 'down'
+    info[d.key] = { chg, unit: rate ? 'bp' : '%', z, from: h[h.length - 1 - n][0], to: h.at(-1)[0] }
   }
   return { states, info }
 }

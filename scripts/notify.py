@@ -68,12 +68,26 @@ def alerts(M, cfg):
     return out
 
 
+FLAT_Z = 0.25
+
+
 def scenario_states(M, n=3):
+    """與 src/lib/matrixStats.js autoDriverStates 相同：N 日變化 ÷（近 60 日單日波動 × √N），|z| < 0.25 視為持平"""
     st = {}
     for k in ("dxy", "us10y", "wti", "spx"):
-        h = (M.get(k) or {}).get("history") or []
-        if len(h) > n and h[-1][1] != h[-1 - n][1]:
-            st[k] = "up" if h[-1][1] > h[-1 - n][1] else "down"
+        m = M.get(k) or {}
+        h = m.get("history") or []
+        if len(h) <= n + 61:
+            continue
+        rate = bool(m.get("rate"))
+        a, b = h[-1 - n][1], h[-1][1]
+        chg = (b - a) * 100 if rate else (b / a - 1) * 100
+        tail = h[-62:]
+        d = [((y[1] - x[1]) * 100 if rate else (y[1] / x[1] - 1) * 100) for x, y in zip(tail, tail[1:])][-60:]
+        mu = sum(d) / len(d)
+        sd = (sum((x - mu) ** 2 for x in d) / (len(d) - 1)) ** 0.5
+        z = chg / (sd * n ** 0.5) if sd else 0
+        st[k] = "flat" if chg == 0 or abs(z) < FLAT_Z else ("up" if chg > 0 else "down")
     return st
 
 
@@ -104,7 +118,7 @@ def build_events(M, FL, cfg, generated, qinfo=None):
     sig = "|".join(names) or "無"
     ev.append((f"scen:{sig}", "🧭 連動情境改變", (f"目前情境：{'、'.join(names)}" if names else "目前無明確情境（混合訊號）")
                + "\n近 3 日：" + "、".join(f"{ {'dxy': '美元', 'us10y': '美債殖利率', 'wti': '原油', 'spx': '美股'}[k] }{'上漲' if v == 'up' else '下跌'}"
-                                         for k, v in st.items()), 3, ["compass"], "#/matrix"))
+                                         for k, v in st.items() if v != "flat") + ("（其餘持平）" if "flat" in st.values() else ""), 3, ["compass"], "#/matrix"))
 
     tx = ((FL or {}).get("txf") or {}).get("series") or []
     if len(tx) >= 2 and tx[-1][1] is not None and tx[-2][1] is not None:
