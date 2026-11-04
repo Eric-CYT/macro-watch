@@ -25,7 +25,9 @@ function Heptagon({ rows, size = 200, big, onHover, onPick, picked }) {
       <polygon points={poly(Array(N).fill(0))} fill="none" stroke="#6b6a65" strokeWidth={1.6} />
       {rows.map((_, i) => { const [x, y] = pt(i, MAX); return <line key={i} x1={C} y1={C} x2={x} y2={y} stroke="#2a2a27" /> })}
       {prev.some((v) => v != null) && <polygon points={poly(prev)} fill="none" stroke={PREV} strokeWidth={1.3} strokeDasharray="4 3" />}
-      <polygon points={poly(cur)} fill={BLUE} fillOpacity={0.14} stroke={BLUE} strokeWidth={big ? 2 : 1.6} strokeLinejoin="round" />
+      {cur.some((v) => v != null)
+        ? <polygon points={poly(cur)} fill={BLUE} fillOpacity={0.14} stroke={BLUE} strokeWidth={big ? 2 : 1.6} strokeLinejoin="round" />
+        : <text x={C} y={C + 4} textAnchor="middle" fontSize={big ? 13 : 11} fill="#8d8c84">資料累積中</text>}
       {rows.map((r, i) => {
         const v = r.cur?.z
         if (v == null) return null
@@ -186,9 +188,17 @@ function Drill({ g, metrics, drillKey, periods, sel, custom, onSel, label }) {
   const ranked = rows.filter((r) => r.cur).sort((a, b) => b.cur.z - a.cur.z)
   const fmtRaw = (r) => (r.cur ? (r.bond ? `殖利率 ${sg(-r.cur.raw)}bp` : `${sg(r.cur.raw, 2)}%`) : '—')
   const shape = `${rows.length} 邊形`
+  const have = Math.min(...items.map((i) => i.history?.length || 0))
+  const needCur = n + 62, needPrev = 2 * n + 62
   return (
     <div className="mt-2">
       <div className="text-[13px] text-ink mb-1">{g.name}｜{shape}</div>
+      {have < needPrev && (
+        <p className="text-[12px] text-warning mb-2">
+          歷史資料累積中：目前 {have} 個交易日。σ 需要前 60 日波動，所以 1 日比較需 63 天、{n} 日本期需 {needCur} 天、加上一期需 {needPrev} 天。
+          {drillKey === 'taiex' && ' 證交所產業指數每次更新（平日每 30 分鐘）回補 30 個交易日，約 2–3 小時補齊。'}
+        </p>
+      )}
       <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2">
         {periods.map((p) => (
           <div key={p} role="button" tabIndex={0} onClick={() => onSel(p)} onKeyDown={(e) => e.key === 'Enter' && onSel(p)}

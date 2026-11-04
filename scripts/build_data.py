@@ -452,7 +452,7 @@ def main():
     t = time.time()
     try:
         tw_cache, n_new, errs = drill_mod.twse_sectors(tw_days, arch / "cache" / "twse_sectors.json",
-                                                       max_new=15 if time.time() - T0 < 540 else 2)
+                                                       max_new=30 if time.time() - T0 < 480 else 3)
         log(f"✓ 證交所產業指數 新增 {n_new} 天 ({time.time() - t:.1f}s)")
         ERRORS.extend(f"證交所產業指數 {e}" for e in errs)
     except Exception as e:  # noqa: BLE001
@@ -462,7 +462,7 @@ def main():
         DRILL = drill_mod.build(M, YBYSYM, F, TR, {**CG, **CGX}, {k: v for k, v in BIN_ALTS.items() if v}, STABLE, tw_cache)
         n_tw = len([d for d, v in tw_cache.items() if v])
         if n_tw < 125:
-            DRILL["taiex"]["note"] = f"歷史回補中（已 {n_tw} 個交易日，每次更新補 15 天；滿 125 天後 30 日比較才完整）"
+            DRILL["taiex"]["note"] = f"歷史回補中（已 {n_tw} 個交易日，每次更新補 30 天；滿 122 天後 30 日比較才完整）"
     except Exception as e:  # noqa: BLE001
         DRILL = {}
         ERRORS.append(f"延伸板塊: {type(e).__name__}: {str(e)[:160]}")

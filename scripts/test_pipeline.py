@@ -336,7 +336,7 @@ def test_full_pipeline(sample_out=None):
         twd = next(i for i in DR["dxy"]["items"] if i["k"] == "TWD=X")
         # 新台幣：Yahoo TWD=X 約 30.6（台幣/美元）→ 倒數後約 0.0327（升值＝上漲）
         assert 0.02 < twd["history"][-1][1] < 0.05, twd["history"][-1]
-        assert DR["us10y"]["items"][0]["mode"] == "bond" and len(DR["taiex"]["items"][0]["history"]) == 15
+        assert DR["us10y"]["items"][0]["mode"] == "bond" and len(DR["taiex"]["items"][0]["history"]) == 30
         FLx = m["flows"]
         assert len(FLx["tw_inst"]["series"]) == 15 and FLx["tw_inst"]["checks"][0]["status"] == "ok" \
             and FLx["tw_inst"]["status"] == "single", FLx["tw_inst"]
