@@ -3,6 +3,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLin
 import { AX, GRID, TT } from './charts'
 import { RADAR_ASSETS, RADAR_PERIODS, radarPeriod, radarMaxN, curPrev, volumeCheck, ratioSeries, alignDate, cryptoBasket, idxAtOrBefore, radarBacktest } from '../lib/flowRadar'
 import { StatusDot } from './bits'
+import { Forecast } from './Forecast'
 
 const KEY = 'mdj.radar.v1'
 const MAX = 3
@@ -151,6 +152,7 @@ export function FlowRadar({ metrics, weights, drill }) {
         </div>
       </div>
       <Backtest metrics={metrics} weights={weights} />
+      <Forecast metrics={metrics} weights={weights} drill={drill} />
       <div className="mt-3 pt-2 border-t border-line">
         <div className="flex items-center gap-1 flex-wrap">
           <span className="text-[12px] text-ink2 mr-1">延伸板塊</span>

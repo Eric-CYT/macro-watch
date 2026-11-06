@@ -47,11 +47,12 @@ export default function App() {
 
   const load = useCallback(async () => {
     try {
-      const [m, n, c, qi] = await Promise.all([
+      const [m, n, c, qi, dr] = await Promise.all([
         getJSON('data/market.json'), getJSON('data/news.json').catch(() => null),
         getJSON('data/config.json').catch(() => null), getJSON('data/questions/index.json').catch(() => []),
+        getJSON('data/drill.json').catch(() => null),
       ])
-      setMarket(m); setNews(n); setCfg(c); setQIndex(qi); setErr(null)
+      setMarket(dr ? { ...m, drill: dr } : m); setNews(n); setCfg(c); setQIndex(qi); setErr(null)
       if (qi.length) setToday(await getJSON(`data/questions/${qi.at(-1).d}.json`).catch(() => null))
     } catch (e) { setErr(e.message) }
   }, [])

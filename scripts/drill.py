@@ -18,7 +18,7 @@ from pathlib import Path
 import sources as S
 import validate as V
 
-KEEP = 260  # 足夠算 30 日本期＋30 日上期＋60 日波動
+KEEP = 520  # 約 2 年：雷達只需 122 天，方向預估的歷史驗證需要更長
 
 US_SECTORS = [("XLK", "科技"), ("XLF", "金融"), ("XLC", "通訊"), ("XLY", "非必需消費"),
               ("XLV", "醫療"), ("XLI", "工業"), ("XLP", "必需消費"), ("XLE", "能源")]
@@ -42,8 +42,12 @@ YAHOO_EXTRA = sorted({s for s, _ in US_SECTORS} | {"CNY=X", "AUDUSD=X"} | {s for
 FRED_EXTRA = ["DEXCHUS", "DEXUSAL", "DCOILBRENTEU", "DHHNGSP", "DGS3MO", "DGS5", "DGS30"]
 
 
+def _sig(v):
+    return float(f"{v:.6g}")
+
+
 def _trim(h):
-    return [[d, round(v, 6)] for d, v in (h or [])[-KEEP:] if v is not None]
+    return [[d, _sig(v)] for d, v in (h or [])[-KEEP:] if v is not None]
 
 
 def item(k, label, hist, source, checks=None, mode="price", note=None, volume=None):
@@ -51,7 +55,7 @@ def item(k, label, hist, source, checks=None, mode="price", note=None, volume=No
     out = {"k": k, "label": label, "history": _trim(hist), "source": source, "mode": mode, "note": note,
            "checks": checks, "status": (V.worst(checks) if hist else "missing")}
     if volume:
-        out["volume"] = [[d, v] for d, v in volume[-160:] if v]
+        out["volume"] = [[d, _sig(v)] for d, v in volume[-160:] if v]
     return out
 
 

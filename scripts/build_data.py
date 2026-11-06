@@ -122,7 +122,7 @@ def main():
     log("開始抓取 Yahoo")
     Y = pmap([(k, sym) for k, sym in YSYM.items()], yahoo_hist, workers=6)
     have = set(YSYM.values())
-    YX = pmap([(sym, sym, "1y") for sym in drill_mod.YAHOO_EXTRA if sym not in have], yahoo_hist, workers=6)
+    YX = pmap([(sym, sym, "2y") for sym in drill_mod.YAHOO_EXTRA if sym not in have], yahoo_hist, workers=6)
     YBYSYM = {sym: Y.get(k) for k, sym in YSYM.items()} | YX
     Y["USDJPY"] = Y["usdjpy"]
 
@@ -455,12 +455,13 @@ def main():
         b.setdefault("key", k)
 
     # ------------------------------------------------------------ 七邊形延伸板塊
-    BIN_ALTS = pmap([(sym, f"Binance {sym}", S.binance_klines, sym, "1d", 400) for sym, _ in drill_mod.ALTS], safe, workers=3)
+    tw_days_long = [d for d, _ in ((M.get("taiex") or {}).get("history") or [])][-400:]
+    BIN_ALTS = pmap([(sym, f"Binance {sym}", S.binance_klines, sym, "1d", 730) for sym, _ in drill_mod.ALTS], safe, workers=3)
     STABLE = {cid: safe(f"CoinGecko {cid} 市值", S.coingecko_caps_history, cid, 365) for cid in ("tether", "usd-coin")}
     CGX = safe("CoinGecko 山寨幣市值", S.coingecko_prices, tuple(cid for _, cid in drill_mod.ALTS)) or {}
     t = time.time()
     try:
-        tw_cache, n_new, errs = drill_mod.twse_sectors(tw_days, arch / "cache" / "twse_sectors.json",
+        tw_cache, n_new, errs = drill_mod.twse_sectors(tw_days_long, arch / "cache" / "twse_sectors.json",
                                                        max_new=30 if time.time() - T0 < 480 else 3)
         log(f"✓ 證交所產業指數 新增 {n_new} 天 ({time.time() - t:.1f}s)")
         ERRORS.extend(f"證交所產業指數 {e}" for e in errs)
@@ -469,7 +470,7 @@ def main():
         ERRORS.append(f"證交所產業指數: {type(e).__name__}: {str(e)[:120]}")
     t = time.time()
     try:
-        qfii_cache, n_new, errs = pos_mod.twse_qfii(tw_days, arch / "cache" / "twse_qfii.json",
+        qfii_cache, n_new, errs = pos_mod.twse_qfii(tw_days_long, arch / "cache" / "twse_qfii.json",
                                                     max_new=30 if time.time() - T0 < 500 else 3)
         log(f"✓ 證交所外資產業持股 新增 {n_new} 天 ({time.time() - t:.1f}s)")
         ERRORS.extend(f"證交所外資產業持股 {e}" for e in errs)
@@ -598,13 +599,18 @@ def main():
     summary = {s: sum(1 for m in allm if m["status"] == s) for s in ("ok", "warn", "single", "fail", "stale", "missing")}
     market = {
         "updated": now.isoformat(timespec="seconds"),
-        "metrics": M, "macro": macro, "flows": FL, "heatmap": heat, "crypto_weights": CRYPTO_W, "drill": DRILL,
+        "metrics": M, "macro": macro, "flows": FL, "heatmap": heat, "crypto_weights": CRYPTO_W,
+        # 延伸板塊的長歷史另存 drill.json（減輕首頁 market.json 大小）；這裡只留摘要
+        "drill": {g: {**{k: v for k, v in b.items() if k != "items"},
+                      "items": [{k: v for k, v in it.items() if k not in ("history", "volume", "qfii")} for it in b["items"]]}
+                  for g, b in DRILL.items()},
         "intraday": {"vix": (vix_i or {}).get("points") or [], "btc": btc_i or []},
         "events": upcoming[:20],
         "quality": {"summary": summary, "errors": ERRORS + [f"新聞 {e}" for e in news["errors"]]},
         "questions_generated": generated,
     }
     (out / "market.json").write_text(S.dumps(market), encoding="utf-8")
+    (out / "drill.json").write_text(S.dumps(DRILL), encoding="utf-8")
 
     compact = {
         "updated": market["updated"], "summary": summary, "errors": market["quality"]["errors"],

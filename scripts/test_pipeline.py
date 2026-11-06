@@ -390,7 +390,9 @@ def test_full_pipeline(sample_out=None):
         for k in ("cpi", "core", "nfp", "unrate", "ism"):
             assert m["macro"][k]["series"], k
         assert len(m["metrics"]["spx"]["volume"]) == 160 and len(m["metrics"]["btc"]["volume"]) == 160
-        DR = m["drill"]
+        assert "history" not in m["drill"]["spx"]["items"][0], "market.json 不應含延伸板塊長歷史"
+        DR = json.loads((out / "drill.json").read_text())
+        assert len(DR["spx"]["items"][0]["history"]) > 400, len(DR["spx"]["items"][0]["history"])
         assert m["flows"]["options"]["series"] and m["flows"]["options"]["checks"][0]["status"] == "ok", m["flows"]["options"]["checks"]
         assert [i["k"] for i in m["flows"]["cftc"]["items"] if i["series"]] == ["gold", "wti", "jpy", "ust10", "es", "btc"]
         assert DR["taiex"]["items"][0].get("qfii"), "外資產業持股未寫入"
