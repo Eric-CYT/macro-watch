@@ -1,0 +1,690 @@
+{
+ "date": "2026-11-27",
+ "version": 2,
+ "generated_at": "2026-11-27T21:54:14+00:00",
+ "engine": "rules",
+ "cycle": {
+  "from": "2026-11-23",
+  "to": "2026-11-27",
+  "n": 3
+ },
+ "events": [],
+ "snapshot": {
+  "vix": {
+   "v": 23.809999465942383,
+   "chg_1d": -11.157,
+   "rate": false
+  },
+  "dxy": {
+   "v": 104.01399993896484,
+   "chg_1d": 0.332,
+   "rate": false
+  },
+  "us10y": {
+   "v": 4.94,
+   "chg_1d": 9.0,
+   "rate": true
+  },
+  "us02y": {
+   "v": 4.69,
+   "chg_1d": 8.0,
+   "rate": true
+  },
+  "spread": {
+   "v": 0.25,
+   "chg_1d": 1.0,
+   "rate": true
+  },
+  "hy": {
+   "v": 3.77,
+   "chg_1d": 0.0,
+   "rate": true
+  },
+  "usdjpy": {
+   "v": 159.56300354003906,
+   "chg_1d": 0.219,
+   "rate": false
+  },
+  "usdtwd": {
+   "v": 32.979000091552734,
+   "chg_1d": -0.633,
+   "rate": false
+  },
+  "btc": {
+   "v": 59803.69,
+   "chg_1d": -1.277,
+   "rate": false
+  },
+  "taiex": {
+   "v": 39151.80859375,
+   "chg_1d": 2.504,
+   "rate": false
+  },
+  "spx": {
+   "v": 7297.490234375,
+   "chg_1d": 1.597,
+   "rate": false
+  },
+  "sox": {
+   "v": 9186.7060546875,
+   "chg_1d": 4.693,
+   "rate": false
+  },
+  "gold": {
+   "v": 3668.5,
+   "chg_1d": 3.753,
+   "rate": false
+  },
+  "wti": {
+   "v": 83.08000183105469,
+   "chg_1d": -0.717,
+   "rate": false
+  },
+  "copper": {
+   "v": 5.600500106811523,
+   "chg_1d": 5.026,
+   "rate": false
+  }
+ },
+ "assessment": {
+  "cycle": 3,
+  "regime": "risk_on",
+  "regime_txt": "風險資產流入、避險資產流出 → Risk-on",
+  "risk_avg": 0.65,
+  "safe_avg": -0.19,
+  "liquidity": "偏收緊",
+  "liq_items": [
+   {
+    "name": "美元",
+    "z": -0.54,
+    "txt": "-0.29%",
+    "effect": "寬鬆"
+   },
+   {
+    "name": "美債 2Y 殖利率",
+    "z": 0.55,
+    "txt": "+6bp",
+    "effect": "收緊"
+   },
+   {
+    "name": "高收益債利差",
+    "z": 1.05,
+    "txt": "+14bp",
+    "effect": "收緊"
+   }
+  ],
+  "rows": {
+   "dxy": {
+    "name": "美元 DXY",
+    "z3": -0.54,
+    "raw3": -0.29,
+    "z20": 1.37,
+    "raw20": 1.93,
+    "label": "由流入轉流出（早期反轉）",
+    "txt3": "-0.29%"
+   },
+   "gold": {
+    "name": "黃金",
+    "z3": 0.18,
+    "raw3": 0.47,
+    "z20": -1.3,
+    "raw20": -9.0,
+    "label": "流出減速",
+    "txt3": "+0.47%"
+   },
+   "btc": {
+    "name": "加密（BTC）",
+    "z3": -0.01,
+    "raw3": -0.05,
+    "z20": -2.38,
+    "raw20": -21.17,
+    "label": "流出減速",
+    "txt3": "-0.05%"
+   },
+   "spx": {
+    "name": "美股（S&P 500）",
+    "z3": 0.38,
+    "raw3": 0.83,
+    "z20": -0.98,
+    "raw20": -5.48,
+    "label": "流出減速",
+    "txt3": "+0.83%"
+   },
+   "taiex": {
+    "name": "台股",
+    "z3": 1.48,
+    "raw3": 6.36,
+    "z20": -1.4,
+    "raw20": -15.56,
+    "label": "由流出轉流入（早期反轉）",
+    "txt3": "+6.36%"
+   },
+   "us10y": {
+    "name": "美債（10Y）",
+    "z3": -0.21,
+    "raw3": -2.0,
+    "z20": 0.44,
+    "raw20": 11.0,
+    "label": "無明顯方向",
+    "txt3": "殖利率+2bp"
+   },
+   "wti": {
+    "name": "原油（WTI）",
+    "z3": 0.73,
+    "raw3": 3.63,
+    "z20": -1.44,
+    "raw20": -18.55,
+    "label": "由流出轉流入（早期反轉）",
+    "txt3": "+3.63%"
+   }
+  },
+  "chains": [
+   {
+    "name": "美元流動性 → 加密",
+    "za": -0.54,
+    "zb": -0.01,
+    "status": "不明顯",
+    "why": "美元走強通常收縮加密的流動性"
+   },
+   {
+    "name": "外資匯率 → 台股",
+    "za": 0.69,
+    "zb": 1.48,
+    "status": "失效（背離）",
+    "why": "新台幣貶值（USD/TWD↑）通常伴隨外資賣超台股"
+   },
+   {
+    "name": "實質利率 → 黃金",
+    "za": 0.21,
+    "zb": 0.18,
+    "status": "不明顯",
+    "why": "殖利率上升提高持有黃金的機會成本"
+   },
+   {
+    "name": "利率 → 美股估值",
+    "za": 0.21,
+    "zb": 0.38,
+    "status": "不明顯",
+    "why": "殖利率上升壓縮股票估值"
+   },
+   {
+    "name": "日圓套息 → 美股",
+    "za": 0.42,
+    "zb": 0.38,
+    "status": "不明顯",
+    "why": "日圓急升（USD/JPY↓）常引發套息平倉、拋售風險資產"
+   },
+   {
+    "name": "美元 → 原油",
+    "za": -0.54,
+    "zb": 0.73,
+    "status": "成立",
+    "why": "原油以美元計價，美元走強通常壓抑油價"
+   }
+  ],
+  "calls": [
+   {
+    "asset": "dxy",
+    "dir": "down",
+    "basis": "由流入轉流出（早期反轉）"
+   },
+   {
+    "asset": "taiex",
+    "dir": "up",
+    "basis": "由流出轉流入（早期反轉）"
+   },
+   {
+    "asset": "wti",
+    "dir": "up",
+    "basis": "由流出轉流入（早期反轉）"
+   }
+  ],
+  "text": [
+   "本期（3 個交易日）風險資產流入、避險資產流出 → Risk-on（風險資產平均 +0.6σ、避險資產平均 -0.2σ）。",
+   "流動性環境：偏收緊（美元 -0.29%、美債 2Y 殖利率 +6bp、高收益債利差 +14bp）。",
+   "最強流入：台股 +1.5σ（由流出轉流入（早期反轉））；最強流出：美元 DXY -0.5σ（由流入轉流出（早期反轉））。",
+   "出現早期反轉訊號：美元 DXY：由流入轉流出（早期反轉）；台股：由流出轉流入（早期反轉）；原油（WTI）：由流出轉流入（早期反轉），轉折常最先出現在這裡，值得優先推敲。",
+   "傳導鏈失效：外資匯率 → 台股——平常的關係不成立，代表有其他力量主導。",
+   "系統下一期傾向（動能規則）：資金續流入 台股、原油（WTI）；續流出 美元 DXY。"
+  ]
+ },
+ "markets": {
+  "dxy": {
+   "name": "美元 DXY",
+   "stats": {
+    "name": "美元 DXY",
+    "z3": -0.54,
+    "raw3": -0.29,
+    "z20": 1.37,
+    "raw20": 1.93,
+    "label": "由流入轉流出（早期反轉）",
+    "txt3": "-0.29%"
+   },
+   "questions": [
+    {
+     "layer": 1,
+     "type": "focus",
+     "market": "dxy",
+     "assets": [
+      "dxy"
+     ],
+     "text": "【美元 DXY｜① 發生了什麼】本期（11-23→11-27，3 個交易日）美元 DXY -0.29%，資金流向 -0.5σ（7 個市場中變化第 3 大）；近 20 日 +1.4σ，系統判讀為「由流入轉流出（早期反轉）」：短期方向和近 20 日相反，可能是轉折的早期訊號。你認為這是趨勢的延續、轉折，還是一次性的衝擊？你從哪些跡象（波動、量、與其他市場的關係）判斷？",
+     "hint": "先分辨『價格在動』還是『結構在變』：結構變化通常伴隨相關市場一起動、波動率放大，而且不會在一兩天內被收回。"
+    },
+    {
+     "layer": 2,
+     "type": "focus",
+     "market": "dxy",
+     "assets": [
+      "dxy"
+     ],
+     "text": "【美元 DXY｜② 誰在推、錢從哪來】這個市場常見的驅動因子是 利差（美債 2Y）、避險需求、歐元與日圓的強弱（DXY 有 57.6% 是歐元）。本期相關數據：美債 2Y +6bp（+0.6σ）、USD/JPY +0.35%（+0.4σ）。同一期間 台股 +1.5σ，方向相反——資金可能從 美元 DXY 流向 台股，也可能只是巧合。你認為這次真正的推手是誰？資金是從哪裡來（或流到哪裡去）？",
+     "hint": "找出資金的「來源」比找去處更重要：如果找不到對應流出的市場，這次移動可能只是部位調整或流動性變化，而不是真正的輪動。"
+    },
+    {
+     "layer": 3,
+     "type": "focus",
+     "market": "dxy",
+     "assets": [
+      "dxy"
+     ],
+     "text": "【美元 DXY｜③ 下一站與驗證】如果 美元 DXY 這波資金移動才剛開始，下一個會被影響的市場是誰？（常見的傳導對象：台股與新台幣、加密資產、黃金、新興市場）請寫下你對下一期（3 個交易日）美元 DXY 的方向判斷，以及什麼訊號出現代表你錯了。",
+     "hint": "在下方「我的判斷」選方向與 3 日期間，下一期作答時系統會自動對答案；失效條件寫得越具體（價位、數據、某市場反向），越能幫你及早認錯。"
+    }
+   ]
+  },
+  "gold": {
+   "name": "黃金",
+   "stats": {
+    "name": "黃金",
+    "z3": 0.18,
+    "raw3": 0.47,
+    "z20": -1.3,
+    "raw20": -9.0,
+    "label": "流出減速",
+    "txt3": "+0.47%"
+   },
+   "questions": [
+    {
+     "layer": 1,
+     "type": "focus",
+     "market": "gold",
+     "assets": [
+      "gold"
+     ],
+     "text": "【黃金｜① 發生了什麼】本期（11-23→11-27，3 個交易日）黃金 +0.47%，資金流向 +0.2σ（7 個市場中變化第 6 大）；近 20 日 -1.3σ，系統判讀為「流出減速」：中期趨勢仍在，但本期動能明顯放慢。你認為這是趨勢的延續、轉折，還是一次性的衝擊？你從哪些跡象（波動、量、與其他市場的關係）判斷？",
+     "hint": "先分辨『價格在動』還是『結構在變』：結構變化通常伴隨相關市場一起動、波動率放大，而且不會在一兩天內被收回。"
+    },
+    {
+     "layer": 2,
+     "type": "focus",
+     "market": "gold",
+     "assets": [
+      "gold",
+      "us10y",
+      "dxy"
+     ],
+     "text": "【黃金｜② 誰在推、錢從哪來】這個市場常見的驅動因子是 實質利率（美債 10Y）、美元、避險需求、央行買盤。本期相關數據：美債（10Y） +2bp（+0.2σ）、美元 DXY -0.29%（-0.5σ）。你認為這次真正的推手是誰？資金是從哪裡來（或流到哪裡去）？",
+     "hint": "找出資金的「來源」比找去處更重要：如果找不到對應流出的市場，這次移動可能只是部位調整或流動性變化，而不是真正的輪動。"
+    },
+    {
+     "layer": 3,
+     "type": "focus",
+     "market": "gold",
+     "assets": [
+      "gold"
+     ],
+     "text": "【黃金｜③ 下一站與驗證】如果 黃金 這波資金移動才剛開始，下一個會被影響的市場是誰？（常見的傳導對象：美元、實質利率、加密（另類資產）、礦業股）請寫下你對下一期（3 個交易日）黃金 的方向判斷，以及什麼訊號出現代表你錯了。",
+     "hint": "在下方「我的判斷」選方向與 3 日期間，下一期作答時系統會自動對答案；失效條件寫得越具體（價位、數據、某市場反向），越能幫你及早認錯。"
+    }
+   ]
+  },
+  "btc": {
+   "name": "加密（BTC）",
+   "stats": {
+    "name": "加密（BTC）",
+    "z3": -0.01,
+    "raw3": -0.05,
+    "z20": -2.38,
+    "raw20": -21.17,
+    "label": "流出減速",
+    "txt3": "-0.05%"
+   },
+   "questions": [
+    {
+     "layer": 1,
+     "type": "focus",
+     "market": "btc",
+     "assets": [
+      "btc"
+     ],
+     "text": "【加密（BTC）｜① 發生了什麼】本期（11-23→11-27，3 個交易日）加密（BTC） -0.05%，資金流向 -0.0σ（7 個市場中變化第 7 大）；近 20 日 -2.4σ，系統判讀為「流出減速」：中期趨勢仍在，但本期動能明顯放慢。你認為這是趨勢的延續、轉折，還是一次性的衝擊？你從哪些跡象（波動、量、與其他市場的關係）判斷？",
+     "hint": "先分辨『價格在動』還是『結構在變』：結構變化通常伴隨相關市場一起動、波動率放大，而且不會在一兩天內被收回。"
+    },
+    {
+     "layer": 2,
+     "type": "focus",
+     "market": "btc",
+     "assets": [
+      "btc",
+      "dxy",
+      "spx"
+     ],
+     "text": "【加密（BTC）｜② 誰在推、錢從哪來】這個市場常見的驅動因子是 美元流動性、風險偏好（美股）、現貨 ETF 資金、槓桿與清算。本期相關數據：美元 DXY -0.29%（-0.5σ）、美股（S&P 500） +0.83%（+0.4σ）。你認為這次真正的推手是誰？資金是從哪裡來（或流到哪裡去）？",
+     "hint": "找出資金的「來源」比找去處更重要：如果找不到對應流出的市場，這次移動可能只是部位調整或流動性變化，而不是真正的輪動。"
+    },
+    {
+     "layer": 3,
+     "type": "focus",
+     "market": "btc",
+     "assets": [
+      "btc"
+     ],
+     "text": "【加密（BTC）｜③ 下一站與驗證】如果 加密（BTC） 這波資金移動才剛開始，下一個會被影響的市場是誰？（常見的傳導對象：高 Beta 科技股、加密相關股、市場整體風險偏好）請寫下你對下一期（3 個交易日）加密（BTC） 的方向判斷，以及什麼訊號出現代表你錯了。",
+     "hint": "在下方「我的判斷」選方向與 3 日期間，下一期作答時系統會自動對答案；失效條件寫得越具體（價位、數據、某市場反向），越能幫你及早認錯。"
+    }
+   ]
+  },
+  "spx": {
+   "name": "美股（S&P 500）",
+   "stats": {
+    "name": "美股（S&P 500）",
+    "z3": 0.38,
+    "raw3": 0.83,
+    "z20": -0.98,
+    "raw20": -5.48,
+    "label": "流出減速",
+    "txt3": "+0.83%"
+   },
+   "questions": [
+    {
+     "layer": 1,
+     "type": "focus",
+     "market": "spx",
+     "assets": [
+      "spx"
+     ],
+     "text": "【美股（S&P 500）｜① 發生了什麼】本期（11-23→11-27，3 個交易日）美股（S&P 500） +0.83%，資金流向 +0.4σ（7 個市場中變化第 4 大）；近 20 日 -1.0σ，系統判讀為「流出減速」：中期趨勢仍在，但本期動能明顯放慢。你認為這是趨勢的延續、轉折，還是一次性的衝擊？你從哪些跡象（波動、量、與其他市場的關係）判斷？",
+     "hint": "先分辨『價格在動』還是『結構在變』：結構變化通常伴隨相關市場一起動、波動率放大，而且不會在一兩天內被收回。"
+    },
+    {
+     "layer": 2,
+     "type": "focus",
+     "market": "spx",
+     "assets": [
+      "spx",
+      "us10y"
+     ],
+     "text": "【美股（S&P 500）｜② 誰在推、錢從哪來】這個市場常見的驅動因子是 企業盈餘與財報、利率（美債 10Y）、風險偏好（VIX）。本期相關數據：美債（10Y） +2bp（+0.2σ）、VIX -9.67%（-0.5σ）。你認為這次真正的推手是誰？資金是從哪裡來（或流到哪裡去）？",
+     "hint": "找出資金的「來源」比找去處更重要：如果找不到對應流出的市場，這次移動可能只是部位調整或流動性變化，而不是真正的輪動。"
+    },
+    {
+     "layer": 3,
+     "type": "focus",
+     "market": "spx",
+     "assets": [
+      "spx"
+     ],
+     "text": "【美股（S&P 500）｜③ 下一站與驗證】如果 美股（S&P 500） 這波資金移動才剛開始，下一個會被影響的市場是誰？（常見的傳導對象：台股（隔日開盤）、費半、加密、VIX）請寫下你對下一期（3 個交易日）美股（S&P 500） 的方向判斷，以及什麼訊號出現代表你錯了。",
+     "hint": "在下方「我的判斷」選方向與 3 日期間，下一期作答時系統會自動對答案；失效條件寫得越具體（價位、數據、某市場反向），越能幫你及早認錯。"
+    }
+   ]
+  },
+  "taiex": {
+   "name": "台股",
+   "stats": {
+    "name": "台股",
+    "z3": 1.48,
+    "raw3": 6.36,
+    "z20": -1.4,
+    "raw20": -15.56,
+    "label": "由流出轉流入（早期反轉）",
+    "txt3": "+6.36%"
+   },
+   "questions": [
+    {
+     "layer": 1,
+     "type": "focus",
+     "market": "taiex",
+     "assets": [
+      "taiex"
+     ],
+     "text": "【台股｜① 發生了什麼】本期（11-23→11-27，3 個交易日）台股 +6.36%，資金流向 +1.5σ（7 個市場中變化第 1 大）；近 20 日 -1.4σ，系統判讀為「由流出轉流入（早期反轉）」：短期方向和近 20 日相反，可能是轉折的早期訊號。你認為這是趨勢的延續、轉折，還是一次性的衝擊？你從哪些跡象（波動、量、與其他市場的關係）判斷？",
+     "hint": "先分辨『價格在動』還是『結構在變』：結構變化通常伴隨相關市場一起動、波動率放大，而且不會在一兩天內被收回。"
+    },
+    {
+     "layer": 2,
+     "type": "focus",
+     "market": "taiex",
+     "assets": [
+      "taiex"
+     ],
+     "text": "【台股｜② 誰在推、錢從哪來】這個市場常見的驅動因子是 半導體循環（費半）、外資動向（新台幣）、美股。本期相關數據：費半 -4.19%（-0.6σ）、USD/TWD +0.40%（+0.7σ）。同一期間 美元 DXY -0.5σ，方向相反——資金可能從 美元 DXY 流向 台股，也可能只是巧合。你認為這次真正的推手是誰？資金是從哪裡來（或流到哪裡去）？",
+     "hint": "找出資金的「來源」比找去處更重要：如果找不到對應流出的市場，這次移動可能只是部位調整或流動性變化，而不是真正的輪動。"
+    },
+    {
+     "layer": 3,
+     "type": "focus",
+     "market": "taiex",
+     "assets": [
+      "taiex"
+     ],
+     "text": "【台股｜③ 下一站與驗證】如果 台股 這波資金移動才剛開始，下一個會被影響的市場是誰？（常見的傳導對象：新台幣匯率、外資期貨部位、亞洲科技股）請寫下你對下一期（3 個交易日）台股 的方向判斷，以及什麼訊號出現代表你錯了。",
+     "hint": "在下方「我的判斷」選方向與 3 日期間，下一期作答時系統會自動對答案；失效條件寫得越具體（價位、數據、某市場反向），越能幫你及早認錯。"
+    }
+   ]
+  },
+  "us10y": {
+   "name": "美債（10Y）",
+   "stats": {
+    "name": "美債（10Y）",
+    "z3": -0.21,
+    "raw3": -2.0,
+    "z20": 0.44,
+    "raw20": 11.0,
+    "label": "無明顯方向",
+    "txt3": "殖利率+2bp"
+   },
+   "questions": [
+    {
+     "layer": 1,
+     "type": "focus",
+     "market": "us10y",
+     "assets": [
+      "us10y"
+     ],
+     "text": "【美債（10Y）｜① 發生了什麼】本期（11-23→11-27，3 個交易日）美債（10Y） 殖利率+2bp，資金流向 -0.2σ（7 個市場中變化第 5 大）；近 20 日 +0.4σ，系統判讀為「無明顯方向」：本期沒有明顯的資金方向。你認為這是趨勢的延續、轉折，還是一次性的衝擊？你從哪些跡象（波動、量、與其他市場的關係）判斷？",
+     "hint": "先分辨『價格在動』還是『結構在變』：結構變化通常伴隨相關市場一起動、波動率放大，而且不會在一兩天內被收回。"
+    },
+    {
+     "layer": 2,
+     "type": "focus",
+     "market": "us10y",
+     "assets": [
+      "us10y",
+      "spx"
+     ],
+     "text": "【美債（10Y）｜② 誰在推、錢從哪來】這個市場常見的驅動因子是 通膨預期、Fed 政策路徑（美債 2Y）、避險需求、公債供給。本期相關數據：美債 2Y +6bp（+0.6σ）、美股（S&P 500） +0.83%（+0.4σ）。同一期間 台股 +1.5σ，方向相反——資金可能從 美債（10Y） 流向 台股，也可能只是巧合。你認為這次真正的推手是誰？資金是從哪裡來（或流到哪裡去）？",
+     "hint": "找出資金的「來源」比找去處更重要：如果找不到對應流出的市場，這次移動可能只是部位調整或流動性變化，而不是真正的輪動。"
+    },
+    {
+     "layer": 3,
+     "type": "focus",
+     "market": "us10y",
+     "assets": [
+      "us10y"
+     ],
+     "text": "【美債（10Y）｜③ 下一站與驗證】如果 美債（10Y） 這波資金移動才剛開始，下一個會被影響的市場是誰？（常見的傳導對象：美股估值（特別是科技／費半）、黃金、美元、房地產）請寫下你對下一期（3 個交易日）美債（10Y） 的方向判斷，以及什麼訊號出現代表你錯了。",
+     "hint": "在下方「我的判斷」選方向與 3 日期間，下一期作答時系統會自動對答案；失效條件寫得越具體（價位、數據、某市場反向），越能幫你及早認錯。"
+    }
+   ]
+  },
+  "wti": {
+   "name": "原油（WTI）",
+   "stats": {
+    "name": "原油（WTI）",
+    "z3": 0.73,
+    "raw3": 3.63,
+    "z20": -1.44,
+    "raw20": -18.55,
+    "label": "由流出轉流入（早期反轉）",
+    "txt3": "+3.63%"
+   },
+   "questions": [
+    {
+     "layer": 1,
+     "type": "focus",
+     "market": "wti",
+     "assets": [
+      "wti"
+     ],
+     "text": "【原油（WTI）｜① 發生了什麼】本期（11-23→11-27，3 個交易日）原油（WTI） +3.63%，資金流向 +0.7σ（7 個市場中變化第 2 大）；近 20 日 -1.4σ，系統判讀為「由流出轉流入（早期反轉）」：短期方向和近 20 日相反，可能是轉折的早期訊號。你認為這是趨勢的延續、轉折，還是一次性的衝擊？你從哪些跡象（波動、量、與其他市場的關係）判斷？",
+     "hint": "先分辨『價格在動』還是『結構在變』：結構變化通常伴隨相關市場一起動、波動率放大，而且不會在一兩天內被收回。"
+    },
+    {
+     "layer": 2,
+     "type": "focus",
+     "market": "wti",
+     "assets": [
+      "wti",
+      "dxy"
+     ],
+     "text": "【原油（WTI）｜② 誰在推、錢從哪來】這個市場常見的驅動因子是 供需與 OPEC+、地緣政治、景氣（銅）、美元。本期相關數據：銅 -0.47%（-0.2σ）、美元 DXY -0.29%（-0.5σ）。同一期間 美元 DXY -0.5σ，方向相反——資金可能從 美元 DXY 流向 原油（WTI），也可能只是巧合。你認為這次真正的推手是誰？資金是從哪裡來（或流到哪裡去）？",
+     "hint": "找出資金的「來源」比找去處更重要：如果找不到對應流出的市場，這次移動可能只是部位調整或流動性變化，而不是真正的輪動。"
+    },
+    {
+     "layer": 3,
+     "type": "focus",
+     "market": "wti",
+     "assets": [
+      "wti"
+     ],
+     "text": "【原油（WTI）｜③ 下一站與驗證】如果 原油（WTI） 這波資金移動才剛開始，下一個會被影響的市場是誰？（常見的傳導對象：通膨預期與美債殖利率、能源股、航運與化工、新台幣（進口成本））請寫下你對下一期（3 個交易日）原油（WTI） 的方向判斷，以及什麼訊號出現代表你錯了。",
+     "hint": "在下方「我的判斷」選方向與 3 日期間，下一期作答時系統會自動對答案；失效條件寫得越具體（價位、數據、某市場反向），越能幫你及早認錯。"
+    }
+   ]
+  }
+ },
+ "focus": [
+  "taiex",
+  "wti"
+ ],
+ "questions": [
+  {
+   "layer": 1,
+   "type": "focus",
+   "market": "taiex",
+   "assets": [
+    "taiex"
+   ],
+   "text": "【台股｜① 發生了什麼】本期（11-23→11-27，3 個交易日）台股 +6.36%，資金流向 +1.5σ（7 個市場中變化第 1 大）；近 20 日 -1.4σ，系統判讀為「由流出轉流入（早期反轉）」：短期方向和近 20 日相反，可能是轉折的早期訊號。你認為這是趨勢的延續、轉折，還是一次性的衝擊？你從哪些跡象（波動、量、與其他市場的關係）判斷？",
+   "hint": "先分辨『價格在動』還是『結構在變』：結構變化通常伴隨相關市場一起動、波動率放大，而且不會在一兩天內被收回。"
+  },
+  {
+   "layer": 2,
+   "type": "focus",
+   "market": "taiex",
+   "assets": [
+    "taiex"
+   ],
+   "text": "【台股｜② 誰在推、錢從哪來】這個市場常見的驅動因子是 半導體循環（費半）、外資動向（新台幣）、美股。本期相關數據：費半 -4.19%（-0.6σ）、USD/TWD +0.40%（+0.7σ）。同一期間 美元 DXY -0.5σ，方向相反——資金可能從 美元 DXY 流向 台股，也可能只是巧合。你認為這次真正的推手是誰？資金是從哪裡來（或流到哪裡去）？",
+   "hint": "找出資金的「來源」比找去處更重要：如果找不到對應流出的市場，這次移動可能只是部位調整或流動性變化，而不是真正的輪動。"
+  },
+  {
+   "layer": 3,
+   "type": "focus",
+   "market": "taiex",
+   "assets": [
+    "taiex"
+   ],
+   "text": "【台股｜③ 下一站與驗證】如果 台股 這波資金移動才剛開始，下一個會被影響的市場是誰？（常見的傳導對象：新台幣匯率、外資期貨部位、亞洲科技股）請寫下你對下一期（3 個交易日）台股 的方向判斷，以及什麼訊號出現代表你錯了。",
+   "hint": "在下方「我的判斷」選方向與 3 日期間，下一期作答時系統會自動對答案；失效條件寫得越具體（價位、數據、某市場反向），越能幫你及早認錯。"
+  },
+  {
+   "layer": 1,
+   "type": "focus",
+   "market": "wti",
+   "assets": [
+    "wti"
+   ],
+   "text": "【原油（WTI）｜① 發生了什麼】本期（11-23→11-27，3 個交易日）原油（WTI） +3.63%，資金流向 +0.7σ（7 個市場中變化第 2 大）；近 20 日 -1.4σ，系統判讀為「由流出轉流入（早期反轉）」：短期方向和近 20 日相反，可能是轉折的早期訊號。你認為這是趨勢的延續、轉折，還是一次性的衝擊？你從哪些跡象（波動、量、與其他市場的關係）判斷？",
+   "hint": "先分辨『價格在動』還是『結構在變』：結構變化通常伴隨相關市場一起動、波動率放大，而且不會在一兩天內被收回。"
+  },
+  {
+   "layer": 2,
+   "type": "focus",
+   "market": "wti",
+   "assets": [
+    "wti",
+    "dxy"
+   ],
+   "text": "【原油（WTI）｜② 誰在推、錢從哪來】這個市場常見的驅動因子是 供需與 OPEC+、地緣政治、景氣（銅）、美元。本期相關數據：銅 -0.47%（-0.2σ）、美元 DXY -0.29%（-0.5σ）。同一期間 美元 DXY -0.5σ，方向相反——資金可能從 美元 DXY 流向 原油（WTI），也可能只是巧合。你認為這次真正的推手是誰？資金是從哪裡來（或流到哪裡去）？",
+   "hint": "找出資金的「來源」比找去處更重要：如果找不到對應流出的市場，這次移動可能只是部位調整或流動性變化，而不是真正的輪動。"
+  },
+  {
+   "layer": 3,
+   "type": "focus",
+   "market": "wti",
+   "assets": [
+    "wti"
+   ],
+   "text": "【原油（WTI）｜③ 下一站與驗證】如果 原油（WTI） 這波資金移動才剛開始，下一個會被影響的市場是誰？（常見的傳導對象：通膨預期與美債殖利率、能源股、航運與化工、新台幣（進口成本））請寫下你對下一期（3 個交易日）原油（WTI） 的方向判斷，以及什麼訊號出現代表你錯了。",
+   "hint": "在下方「我的判斷」選方向與 3 日期間，下一期作答時系統會自動對答案；失效條件寫得越具體（價位、數據、某市場反向），越能幫你及早認錯。"
+  }
+ ],
+ "headlines": [
+  {
+   "title": "Even the price of toys is on the rise. How Americans are scaling back holiday plans",
+   "url": "https://www.cnbc.com/2026/11/25/holiday-inflation-thanksgiving-travel-food-gifts.html",
+   "tags": []
+  },
+  {
+   "title": "台股重回39000點大關！分析師點名8類股必買 「這時」將創新高",
+   "url": "https://news.google.com/rss/articles/CBMi5wJBVV95cUxNTmU1Q0h4c0xTVXVEM3Z0R0prMmhyTTBvOE5RVTRnRk53T2RaRjEtSFJGSWhabU5uNEJFcjJLTGlJQzVsdW82b0JVWm95R09wbzlYTklYQkdHcnF3YUl6eFN0M29TVjJnSldUWEFBYlZhcDIyeVFLRk9kOXZDV0R5TUdhSXJWNUU4VHd2dnMySFpwcUxQODRKVTA1Rk1WTS05NVhmY25RS1VQTGg2SmxZb3hxOFk4d254MzdoTnkzdzhsYXlSV0VPLUpjWXM3eks4MDVYY19SMkRJZE92X3N6aEluZzhENHlNYUNuN21IUjN1QWQxd3ZzcTRFSDhiaFRuRlE0VC1ocmJVLVF4Tld4ZlpfS2I4WnVKNGdSYUY3cU9zS3RUb1lmeDhqN3c0ajM2cVZER0pQT20xNl9RYm1FRDJKd1MtV19YWFY4Q0RKWkdhdEtrVEd6cnh6RkFuT1FsRF9DWjZkMA?oc=5",
+   "tags": [
+    "台股"
+   ]
+  },
+  {
+   "title": "【川普挺到底！出席台積電亞利桑那新廠動土 想帶黃仁勳一起去】 挺到底！ （#起啵）",
+   "url": "https://news.google.com/rss/articles/CBMi4ANBVV95cUxPRTA5MG9Ic2syXzBKOTFLR0JvVlotVHg4R0N6UHRodmxPeE0zVFNoWHJfbTBFMlRwNnhwTEd1blBLWVI3bmNTS2d1ckVJc1BwVFY0T1owWHRNeXJGYmdWTFczcVVsU09NSHdCaFRLQlpITWkzc1V2Y0dBZFNiRlpyMUY1WWtiNHpwTXV4UnR4VTFCQVVFWDNWVTZmZmhabEE5SmFfVUNsaTVidkx0NFAzaVpWci1UWmFmTmlydFdBMFZLaWRvaTR2ZXdmcXNMYU4xWVNJQlY4ZER6ZFF3VUpkOTd5V2Y5SEFrRFNXUW9NV0pud29wT284Y3ZNU2hJWjhLaWRQZFEwcHpHczQzd2xkOUZRdWpzVmdFT05KWVZLaGxjU2k3TWlFZG8tbXJDX1FDbnNEbDdpazJiWjd3Qm5QLVBIVEtELWpiUmxkNEVMdkEyUkNscjFaQ3lCSEpTUGhvVVVNZF9tMHpsUlNNc3g3VTNhNkxtSS0tMUU0VkhJbVNEVjZ5WnJQU2IzcXNlV01wQXZZNERRR0t5YUFWWjNIcGI1Vnh5VTB1RG5OT2xFd3luMk1NYkxQYVNOUnh0c2J4WGdoX2M0S25VVzNEakx1TkZHYlNPdmhnR0x6amFxOV8?oc=5",
+   "tags": [
+    "半導體"
+   ]
+  },
+  {
+   "title": "下月利率決議或符合市場加息預期--歐洲央行副總裁武伊契奇",
+   "url": "https://news.google.com/rss/articles/CBMid0FVX3lxTE1rNUZSU2JKVGotUDVkU1NqOE9aS0FpSTVTVmtDckU0ZHc5d3p3ZEpkNUItYlNPVWF0R19KY25aVERtZjVzWTllcnJLd2lyUWVMWTFrbW1hOG1mcXVJOVBZaDZNNmc0M2JlTTFPU1dXNHJpd05mdFdB?oc=5",
+   "tags": [
+    "FED"
+   ]
+  },
+  {
+   "title": "〈美股盤後〉AI強勢回血！標普創2025年4月來最佳單周 Sandisk飆16% Anthropic重返IPO價",
+   "url": "https://news.cnyes.com/news/id/6674256",
+   "tags": [
+    "半導體"
+   ]
+  },
+  {
+   "title": "These stocks soared the most during a wild week highlighted by Huang’s return to Nvidia",
+   "url": "https://www.marketwatch.com/story/these-stocks-soared-the-most-during-a-wild-week-highlighted-by-huangs-return-to-nvidia-578b3f9a?mod=mw_rss_topstories",
+   "tags": [
+    "半導體"
+   ]
+  },
+  {
+   "title": "11月外資賣破兆 AI估值傷台股",
+   "url": "https://news.google.com/rss/articles/CBMi3gFBVV95cUxNX2VKcWlUX0RrRDVuczI2R3pZQUM2LTJvVW4tU3Q3T0xtYzFONVd1SVBaVExlQjVBSllHWUREUXJsaGZwR0xxOGdOUzktTC1uME1BcGd5RXR3bzFGRWlzM1FaYUFRaTFJa242UzMtTGlKT3hHMkl5OVdwa1lTZFFYcjdqODJKN0dtSlNnTkNuSGpTQXpQSGtFUmtBdzYzV3dvcTgxeDVKYjF3Z19QMnNxcVBaUWQyT3dseWxQMG1xVTNqSlF1OGVRMnVQUWJxZjFoS2x4UVFlSDhna3o5Y2c?oc=5",
+   "tags": [
+    "半導體",
+    "台股"
+   ]
+  },
+  {
+   "title": "Coming next year: Medicare Advantage plans without drug coverage for almost 640,000 people and fewer choices for the rest",
+   "url": "https://www.marketwatch.com/story/coming-next-year-medicare-advantage-plans-without-drug-coverage-for-almost-640-000-people-and-fewer-choices-for-the-rest-25242d69?mod=mw_rss_topstories",
+   "tags": []
+  }
+ ]
+}
